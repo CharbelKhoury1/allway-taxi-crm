@@ -2,7 +2,66 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { acquireWakeLock } from '../lib/wakeLock'
 
-const PING_INTERVAL = 30_000
+const PING_INTERVAL  = 25_000   // heartbeat to Supabase (ms)
+const STALE_LIMIT    = 45_000   // restart GPS if no update for this long (ms)
+
+// ─── iOS-safe GPS hook ────────────────────────────────────────
+// Handles: initial watch, visibility-change restart, stale-position restart.
+// maximumAge:0 forces a fresh fix every time (critical on iOS).
+function useGPS({ active, onPosition }) {
+  const watchRef     = useRef(null)
+  const lastUpdateAt = useRef(null)
+  const staleTimer   = useRef(null)
+
+  const startWatch = useCallback(() => {
+    if (!('geolocation' in navigator)) return
+    if (watchRef.current !== null) {
+      navigator.geolocation.clearWatch(watchRef.current)
+    }
+    watchRef.current = navigator.geolocation.watchPosition(
+      pos => {
+        lastUpdateAt.current = Date.now()
+        onPosition(pos.coords.latitude, pos.coords.longitude)
+      },
+      err => {
+        // PERMISSION_DENIED(1) — no point retrying
+        if (err.code !== 1) setTimeout(startWatch, 3000)
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+    )
+  }, [onPosition])
+
+  useEffect(() => {
+    if (!active) return
+
+    startWatch()
+
+    // iOS drops geolocation when user switches apps or locks screen.
+    // On return to foreground, restart the watch immediately.
+    function onVisibility() {
+      if (document.visibilityState === 'visible') startWatch()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    // Safety net: if the last position is >45 s old while we're supposedly
+    // watching, something silently died — restart the watch.
+    staleTimer.current = setInterval(() => {
+      if (lastUpdateAt.current && Date.now() - lastUpdateAt.current > STALE_LIMIT) {
+        console.info('[GPS] Stale — restarting watchPosition')
+        startWatch()
+      }
+    }, 20000)
+
+    return () => {
+      if (watchRef.current !== null) {
+        navigator.geolocation.clearWatch(watchRef.current)
+        watchRef.current = null
+      }
+      clearInterval(staleTimer.current)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [active, startWatch])
+}
 
 // ─── Login ────────────────────────────────────────────────────
 function DriverLogin({ onLogin }) {
@@ -15,10 +74,12 @@ function DriverLogin({ onLogin }) {
     e.preventDefault()
     setError('')
     setLoading(true)
+    // Strip everything except digits so "70 111 222" and "70111222" both work
+    const digits = phone.replace(/\D/g, '')
     const { data, error: err } = await supabase
       .from('drivers')
       .select('id, full_name, plate, car_model, status, online, total_trips, rating')
-      .eq('phone', phone.trim())
+      .ilike('phone', `%${digits}`)
       .eq('pwa_pin', pin.trim())
       .single()
     setLoading(false)
@@ -27,138 +88,139 @@ function DriverLogin({ onLogin }) {
   }
 
   return (
-    <div style={s.screen}>
-      <div style={s.loginWrap}>
-        <div style={s.loginLogo}>A</div>
-        <div style={s.loginBrand}>ALLWAY <span style={{color:'#F5B800'}}>TAXI</span></div>
-        <div style={s.loginSub}>Driver App</div>
+    <div style={g.screen}>
+      <div style={g.loginWrap}>
+        <div style={g.loginLogo}>A</div>
+        <div style={g.loginBrand}>ALLWAY <span style={{color:'#F5B800'}}>TAXI</span></div>
+        <div style={g.loginSub}>Driver App</div>
 
-        <form onSubmit={handleLogin} style={{width:'100%',marginTop:28}}>
-          <div style={s.label}>Phone number</div>
-          <input style={s.input} type="tel" placeholder="+961 70 000 000"
-            value={phone} onChange={e=>setPhone(e.target.value)} required />
-
-          <div style={{...s.label,marginTop:14}}>PIN</div>
-          <input style={s.input} type="password" inputMode="numeric"
+        <form onSubmit={handleLogin} style={{width:'100%', marginTop:28}}>
+          <div style={g.label}>Phone number</div>
+          {/* font-size 16px prevents iOS zoom-on-focus */}
+          <input
+            style={g.input} type="tel" inputMode="numeric" placeholder="70111222"
+            value={phone} onChange={e => setPhone(e.target.value)} required
+          />
+          <div style={{...g.label, marginTop:14}}>PIN</div>
+          <input
+            style={g.input} type="password" inputMode="numeric"
             placeholder="4-digit PIN" maxLength={6}
-            value={pin} onChange={e=>setPin(e.target.value)} required />
-
-          {error && <div style={s.errorBox}>{error}</div>}
-
-          <button style={s.btnYellow} type="submit" disabled={loading}>
+            value={pin} onChange={e => setPin(e.target.value)} required
+          />
+          {error && <div style={g.errorBox}>{error}</div>}
+          <button style={g.btnYellow} type="submit" disabled={loading}>
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
+
+        <div style={g.iosHint}>
+          For the best experience on iPhone, tap <strong>Share → Add to Home Screen</strong>
+        </div>
       </div>
     </div>
   )
 }
 
-// ─── Trip request overlay ─────────────────────────────────────
+// ─── Trip request sheet ───────────────────────────────────────
 function TripRequest({ trip, countdown, onAccept, onDecline }) {
   const pct = (countdown / 120) * 100
-
   return (
-    <div style={s.tripOverlay}>
-      <div style={s.tripCard}>
-        {/* Countdown bar */}
-        <div style={s.countdownBar}>
-          <div style={{...s.countdownFill, width:`${pct}%`,
-            background: countdown > 40 ? '#F5B800' : countdown > 15 ? '#EF9F27' : '#F09595'}} />
+    <div style={g.overlay}>
+      <div style={g.tripCard}>
+        <div style={g.countdownBar}>
+          <div style={{
+            ...g.countdownFill,
+            width: `${pct}%`,
+            background: countdown > 40 ? '#F5B800' : countdown > 15 ? '#EF9F27' : '#F09595',
+          }} />
         </div>
-
-        <div style={s.tripBanner}>
-          <span style={s.tripBannerDot} />
+        <div style={g.tripBanner}>
+          <span style={g.tripBannerDot} />
           NEW TRIP — {countdown}S TO RESPOND
         </div>
-
-        <div style={s.tripBody}>
-          <div style={s.tripRow}>
-            <div style={s.tripDotGreen} />
+        <div style={g.tripBody}>
+          <div style={g.routeRow}>
+            <div style={g.dotGreen} />
             <div>
-              <div style={s.tripLabel}>PICKUP</div>
-              <div style={s.tripAddr}>{trip.pickup_address}</div>
+              <div style={g.routeLabel}>PICKUP</div>
+              <div style={g.routeAddr}>{trip.pickup_address}</div>
             </div>
           </div>
-          <div style={s.tripVLine} />
-          <div style={s.tripRow}>
-            <div style={s.tripDotRed} />
+          <div style={g.routeVline} />
+          <div style={g.routeRow}>
+            <div style={g.dotRed} />
             <div>
-              <div style={s.tripLabel}>DROP-OFF</div>
-              <div style={s.tripAddr}>{trip.dropoff_address}</div>
+              <div style={g.routeLabel}>DROP-OFF</div>
+              <div style={g.routeAddr}>{trip.dropoff_address}</div>
             </div>
           </div>
-
-          <div style={s.tripMeta}>
+          <div style={g.metaRow}>
             {trip.distance_km && (
-              <div style={s.tripMetaItem}>
-                <div style={s.tripMetaLabel}>DISTANCE</div>
-                <div style={s.tripMetaVal}>{trip.distance_km} km</div>
+              <div style={g.metaItem}>
+                <div style={g.metaLabel}>DISTANCE</div>
+                <div style={g.metaVal}>{trip.distance_km} km</div>
               </div>
             )}
             {trip.fare_usd && (
-              <div style={s.tripMetaItem}>
-                <div style={s.tripMetaLabel}>FARE</div>
-                <div style={{...s.tripMetaVal,color:'#F5B800'}}>${trip.fare_usd}</div>
+              <div style={g.metaItem}>
+                <div style={g.metaLabel}>FARE</div>
+                <div style={{...g.metaVal, color:'#F5B800'}}>${trip.fare_usd}</div>
               </div>
             )}
-            <div style={s.tripMetaItem}>
-              <div style={s.tripMetaLabel}>CUSTOMER</div>
-              <div style={s.tripMetaVal}>{trip.customers?.full_name || '—'}</div>
+            <div style={g.metaItem}>
+              <div style={g.metaLabel}>CUSTOMER</div>
+              <div style={g.metaVal}>{trip.customers?.full_name || '—'}</div>
             </div>
           </div>
         </div>
-
-        <div style={s.tripBtns}>
-          <button style={s.btnDecline} onClick={onDecline}>Decline</button>
-          <button style={s.btnAccept} onClick={onAccept}>Accept</button>
+        <div style={g.tripBtns}>
+          <button style={g.btnDecline} onClick={onDecline}>Decline</button>
+          <button style={g.btnAccept}  onClick={onAccept}>Accept</button>
         </div>
       </div>
     </div>
   )
 }
 
-// ─── Active trip view ─────────────────────────────────────────
+// ─── Active trip ──────────────────────────────────────────────
 function ActiveTrip({ trip, onComplete }) {
-  function openMaps() {
-    const q = encodeURIComponent(trip.pickup_address)
-    window.open(`https://maps.google.com/?q=${q}`, '_blank')
-  }
   return (
-    <div style={s.activeTripCard}>
-      <div style={s.activeTripHeader}>
-        <div style={s.activeTripPulse} />
-        <span style={{fontSize:11,fontWeight:800,color:'#F5B800',letterSpacing:.5}}>ACTIVE TRIP</span>
+    <div style={g.activeTripCard}>
+      <div style={g.activeTripHeader}>
+        <div style={g.pulsingDot} />
+        <span style={{fontSize:11, fontWeight:800, color:'#F5B800', letterSpacing:.5}}>
+          ACTIVE TRIP
+        </span>
       </div>
-
-      <div style={s.activeTripCustomer}>{trip.customers?.full_name || 'Customer'}</div>
+      <div style={g.activeTripName}>{trip.customers?.full_name || 'Customer'}</div>
       {trip.customers?.phone && (
-        <a href={`tel:${trip.customers.phone}`} style={s.activeTripPhone}>
+        <a href={`tel:${trip.customers.phone}`} style={g.activeTripPhone}>
           📞 {trip.customers.phone}
         </a>
       )}
-
-      <div style={{margin:'14px 0'}}>
-        <div style={s.tripRow}>
-          <div style={s.tripDotGreen} />
+      <div style={{margin:'12px 0'}}>
+        <div style={g.routeRow}>
+          <div style={g.dotGreen} />
           <div>
-            <div style={s.tripLabel}>PICKUP</div>
-            <div style={s.tripAddr}>{trip.pickup_address}</div>
+            <div style={g.routeLabel}>PICKUP</div>
+            <div style={g.routeAddr}>{trip.pickup_address}</div>
           </div>
         </div>
-        <div style={s.tripVLine} />
-        <div style={s.tripRow}>
-          <div style={s.tripDotRed} />
+        <div style={g.routeVline} />
+        <div style={g.routeRow}>
+          <div style={g.dotRed} />
           <div>
-            <div style={s.tripLabel}>DROP-OFF</div>
-            <div style={s.tripAddr}>{trip.dropoff_address}</div>
+            <div style={g.routeLabel}>DROP-OFF</div>
+            <div style={g.routeAddr}>{trip.dropoff_address}</div>
           </div>
         </div>
       </div>
-
-      <div style={{display:'flex',gap:10,marginTop:4}}>
-        <button style={s.btnOutline} onClick={openMaps}>Open Maps</button>
-        <button style={s.btnYellow} onClick={onComplete}>Complete Trip</button>
+      <div style={{display:'flex', gap:10}}>
+        <button style={g.btnOutline}
+          onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(trip.pickup_address)}`, '_blank')}>
+          Open Maps
+        </button>
+        <button style={g.btnYellow} onClick={onComplete}>Complete Trip</button>
       </div>
     </div>
   )
@@ -166,50 +228,52 @@ function ActiveTrip({ trip, onComplete }) {
 
 // ─── Main ─────────────────────────────────────────────────────
 export default function DriverApp() {
-  const [driver, setDriver]         = useState(null)
-  const [online, setOnline]         = useState(false)
-  const [activeTrip, setActiveTrip] = useState(null)
-  const [pendingTrip, setPendingTrip] = useState(null)
-  const [countdown, setCountdown]   = useState(120)
-  const [coords, setCoords]         = useState(null)
+  const [driver, setDriver]             = useState(null)
+  const [online, setOnline]             = useState(false)
+  const [gpsActive, setGpsActive]       = useState(false)
+  const [coords, setCoords]             = useState(null)
+  const [activeTrip, setActiveTrip]     = useState(null)
+  const [pendingTrip, setPendingTrip]   = useState(null)
+  const [countdown, setCountdown]       = useState(120)
   const [wakeLockMethod, setWakeLockMethod] = useState(null)
-  const [todayTrips, setTodayTrips] = useState(0)
-  const [todayEarned, setTodayEarned] = useState(0)
+  const [todayTrips, setTodayTrips]     = useState(0)
+  const [todayEarned, setTodayEarned]   = useState(0)
 
-  const wakeLockRef   = useRef(null)
-  const watchIdRef    = useRef(null)
-  const pingTimerRef  = useRef(null)
-  const cdRef         = useRef(null)
+  const wakeLockRef  = useRef(null)
+  const pingTimer    = useRef(null)
+  const cdTimer      = useRef(null)
 
+  // ── GPS hook (iOS-safe) ──────────────────────────────────
+  const handlePosition = useCallback((lat, lng) => {
+    setCoords({ lat, lng })
+    setGpsActive(true)
+    if (driver) pushLocation(driver.id, lat, lng)
+  }, [driver])
+
+  useGPS({ active: online, onPosition: handlePosition })
+
+  // ── Go Online ────────────────────────────────────────────
   const goOnline = useCallback(async () => {
     if (!driver) return
 
+    // Wake lock — must be called inside a user-gesture (this tap IS a gesture)
     const lock = await acquireWakeLock()
     wakeLockRef.current = lock
     setWakeLockMethod(lock.method)
 
-    if ('geolocation' in navigator) {
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        pos => {
-          const { latitude: lat, longitude: lng } = pos.coords
-          setCoords({ lat, lng })
-          pushLocation(driver.id, lat, lng)
-        },
-        err => console.warn('GPS error:', err.message),
-        { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 }
-      )
-    }
-
-    pingTimerRef.current = setInterval(() => {
+    // Heartbeat ping so auto-offline function knows we're alive
+    pingTimer.current = setInterval(() => {
       supabase.from('drivers')
         .update({ last_seen: new Date().toISOString() })
         .eq('id', driver.id)
     }, PING_INTERVAL)
 
-    await supabase.from('drivers')
-      .update({ online: true, status: 'available', last_seen: new Date().toISOString() })
-      .eq('id', driver.id)
+    await supabase.from('drivers').update({
+      online: true, status: 'available',
+      last_seen: new Date().toISOString(),
+    }).eq('id', driver.id)
 
+    // Subscribe to trips assigned to this driver
     supabase
       .channel(`driver-${driver.id}`)
       .on('postgres_changes', {
@@ -221,12 +285,16 @@ export default function DriverApp() {
           fetchTripDetails(t.id).then(full => { setPendingTrip(full); startCountdown() })
         }
         if (t.status === 'accepted' || t.status === 'on_trip') {
-          fetchTripDetails(t.id).then(full => { setActiveTrip(full); setPendingTrip(null) })
+          fetchTripDetails(t.id).then(full => {
+            setActiveTrip(full); setPendingTrip(null); clearInterval(cdTimer.current)
+          })
         }
         if (t.status === 'completed' || t.status === 'cancelled') {
           setActiveTrip(null)
-          setTodayTrips(n => n + (t.status === 'completed' ? 1 : 0))
-          setTodayEarned(n => n + (t.status === 'completed' && t.fare_usd ? Number(t.fare_usd) : 0))
+          if (t.status === 'completed') {
+            setTodayTrips(n => n + 1)
+            if (t.fare_usd) setTodayEarned(n => n + Number(t.fare_usd))
+          }
         }
       })
       .subscribe()
@@ -234,33 +302,34 @@ export default function DriverApp() {
     setOnline(true)
   }, [driver])
 
+  // ── Go Offline ───────────────────────────────────────────
   const goOffline = useCallback(async () => {
-    navigator.geolocation.clearWatch(watchIdRef.current)
-    clearInterval(pingTimerRef.current)
-    clearInterval(cdRef.current)
+    clearInterval(pingTimer.current)
+    clearInterval(cdTimer.current)
     wakeLockRef.current?.release()
     supabase.removeAllChannels()
-    await supabase.from('drivers')
-      .update({ online: false, status: 'offline' })
-      .eq('id', driver.id)
+    if (driver) {
+      await supabase.from('drivers')
+        .update({ online: false, status: 'offline' })
+        .eq('id', driver.id)
+    }
     setOnline(false)
+    setGpsActive(false)
+    setCoords(null)
     setActiveTrip(null)
     setPendingTrip(null)
-    setCoords(null)
   }, [driver])
 
   function startCountdown() {
     setCountdown(120)
-    clearInterval(cdRef.current)
-    cdRef.current = setInterval(() => {
+    clearInterval(cdTimer.current)
+    cdTimer.current = setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) {
-          clearInterval(cdRef.current)
+          clearInterval(cdTimer.current)
           setPendingTrip(t => {
-            if (t) {
-              supabase.from('trip_dispatch_log')
-                .insert({ trip_id: t.id, driver_id: driver.id, action: 'timeout' })
-            }
+            if (t) supabase.from('trip_dispatch_log')
+              .insert({ trip_id: t.id, driver_id: driver.id, action: 'timeout' })
             return null
           })
           return 0
@@ -271,7 +340,7 @@ export default function DriverApp() {
   }
 
   async function acceptTrip() {
-    clearInterval(cdRef.current)
+    clearInterval(cdTimer.current)
     await supabase.from('trips')
       .update({ status: 'accepted', accepted_at: new Date().toISOString() })
       .eq('id', pendingTrip.id)
@@ -281,7 +350,7 @@ export default function DriverApp() {
   }
 
   async function declineTrip() {
-    clearInterval(cdRef.current)
+    clearInterval(cdTimer.current)
     await supabase.from('trip_dispatch_log')
       .insert({ trip_id: pendingTrip.id, driver_id: driver.id, action: 'declined' })
     setPendingTrip(null)
@@ -297,115 +366,145 @@ export default function DriverApp() {
     setActiveTrip(null)
   }
 
-  useEffect(() => { return () => { if (online) goOffline() } }, [])
+  // Cleanup on unmount
+  useEffect(() => () => { if (online) goOffline() }, [])
 
   if (!driver) return <DriverLogin onLogin={setDriver} />
 
   return (
-    <div style={s.screen}>
-      {/* Warn if wake lock unsupported */}
-      {online && wakeLockMethod === 'none' && (
-        <div style={s.warnBar}>Keep screen on while driving to stay online</div>
-      )}
+    <>
+      {/* Global mobile resets — injected once */}
+      <style>{`
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+        body { overscroll-behavior: none; touch-action: pan-y; }
+        @keyframes spin { to { transform: rotate(360deg) } }
+        @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+        @keyframes slideUp { from { transform:translateY(100%) } to { transform:translateY(0) } }
+      `}</style>
 
-      {/* Header */}
-      <div style={s.header}>
-        <div style={s.headerLogo}>A</div>
-        <div>
-          <div style={s.headerBrand}>ALLWAY <span style={{color:'#F5B800'}}>TAXI</span></div>
-          <div style={s.headerSub}>Driver app</div>
-        </div>
-        <button style={s.logoutBtn} onClick={() => { goOffline(); setDriver(null) }}>
-          Exit
-        </button>
-      </div>
-
-      <div style={s.body}>
-        {/* Big toggle */}
-        <div style={s.toggleWrap}>
-          <button
-            style={{
-              ...s.toggleBtn,
-              background: online
-                ? 'radial-gradient(circle at 40% 35%, #7EDFC0, #3DAE8A)'
-                : 'radial-gradient(circle at 40% 35%, #3A3A4A, #25252F)',
-              boxShadow: online
-                ? '0 0 0 12px rgba(93,202,165,.12), 0 0 0 28px rgba(93,202,165,.06), 0 8px 32px rgba(0,0,0,.5)'
-                : '0 0 0 12px rgba(255,255,255,.04), 0 8px 32px rgba(0,0,0,.4)',
-            }}
-            onClick={online ? goOffline : goOnline}
-            disabled={!!activeTrip}
-          >
-            <div style={{...s.toggleInner, opacity: activeTrip ? .5 : 1}}>
-              <div style={s.toggleLabel}>{online ? 'ON' : 'OFF'}</div>
-              <div style={s.toggleSub}>{online ? 'ONLINE' : 'OFFLINE'}</div>
-            </div>
-          </button>
-          <div style={s.toggleHint}>
-            {activeTrip ? 'Complete your trip first' : online ? 'Tap to go offline' : 'Tap to go online'}
-          </div>
-        </div>
-
-        {/* GPS status */}
-        {online && (
-          <div style={{...s.gpsPill, background: coords ? 'rgba(245,184,0,.12)' : 'rgba(255,255,255,.05)', borderColor: coords ? 'rgba(245,184,0,.25)' : 'rgba(255,255,255,.08)'}}>
-            <div style={{...s.gpsDot, background: coords ? '#F5B800' : '#666'}} />
-            <span style={{fontSize:12,fontWeight:600,color: coords ? '#F5B800' : 'var(--text-ter,#666)'}}>
-              {coords ? 'GPS active — sending location' : 'Acquiring GPS signal…'}
-            </span>
-          </div>
+      <div style={g.screen}>
+        {/* iOS warning banner */}
+        {online && wakeLockMethod === 'none' && (
+          <div style={g.warnBar}>Keep screen on while driving to stay online</div>
         )}
 
-        {/* Stats */}
-        <div style={s.statsRow}>
-          <div style={s.statCard}>
-            <div style={s.statVal}>{todayTrips}</div>
-            <div style={s.statLabel}>Trips{'\n'}today</div>
-          </div>
-          <div style={s.statCard}>
-            <div style={{...s.statVal, color:'#F5B800'}}>${todayEarned.toFixed(0)}</div>
-            <div style={s.statLabel}>Earned</div>
-          </div>
-          <div style={s.statCard}>
-            <div style={s.statVal}>{driver.rating ?? '—'}</div>
-            <div style={s.statLabel}>⭐ Rating</div>
-          </div>
-        </div>
-
-        {/* Driver info */}
-        <div style={s.driverInfo}>
-          <div style={s.driverAvatar}>{driver.full_name?.[0] ?? 'D'}</div>
+        {/* Header */}
+        <div style={g.header}>
+          <div style={g.headerLogo}>A</div>
           <div>
-            <div style={s.driverName}>{driver.full_name}</div>
-            <div style={s.driverSub}>{driver.car_model} · {driver.plate}</div>
+            <div style={g.headerBrand}>ALLWAY <span style={{color:'#F5B800'}}>TAXI</span></div>
+            <div style={g.headerSub}>Driver app</div>
           </div>
+          <button style={g.logoutBtn} onClick={() => { goOffline(); setDriver(null) }}>Exit</button>
         </div>
 
-        {/* Active trip */}
-        {activeTrip && <ActiveTrip trip={activeTrip} onComplete={completeTrip} />}
-      </div>
+        {/* Body */}
+        <div style={g.body}>
 
-      {/* Trip request */}
-      {pendingTrip && (
-        <TripRequest
-          trip={pendingTrip}
-          countdown={countdown}
-          onAccept={acceptTrip}
-          onDecline={declineTrip}
-        />
-      )}
-    </div>
+          {/* Big toggle */}
+          <div style={g.toggleWrap}>
+            <button
+              style={{
+                ...g.toggleBtn,
+                background: online
+                  ? 'radial-gradient(circle at 40% 35%, #7EDFC0, #3DAE8A)'
+                  : 'radial-gradient(circle at 40% 35%, #3A3A4A, #25252F)',
+                boxShadow: online
+                  ? '0 0 0 14px rgba(93,202,165,.12), 0 0 0 32px rgba(93,202,165,.06), 0 8px 32px rgba(0,0,0,.5)'
+                  : '0 0 0 14px rgba(255,255,255,.04), 0 8px 32px rgba(0,0,0,.4)',
+                opacity: activeTrip ? .5 : 1,
+              }}
+              onClick={online ? goOffline : goOnline}
+              disabled={!!activeTrip}
+            >
+              <div style={g.toggleLabel}>{online ? 'ON' : 'OFF'}</div>
+              <div style={g.toggleSub}>{online ? 'ONLINE' : 'OFFLINE'}</div>
+            </button>
+            <div style={g.toggleHint}>
+              {activeTrip
+                ? 'Complete your trip first'
+                : online ? 'Tap to go offline' : 'Tap to go online'}
+            </div>
+          </div>
+
+          {/* GPS pill */}
+          {online && (
+            <div style={{
+              ...g.gpsPill,
+              background: gpsActive ? 'rgba(245,184,0,.1)' : 'rgba(255,255,255,.05)',
+              borderColor: gpsActive ? 'rgba(245,184,0,.25)' : 'rgba(255,255,255,.08)',
+            }}>
+              <div style={{
+                ...g.gpsDot,
+                background: gpsActive ? '#F5B800' : '#555',
+                animation: gpsActive ? 'pulse 2s infinite' : 'none',
+              }} />
+              <span style={{fontSize:13, fontWeight:600, color: gpsActive ? '#F5B800' : '#666'}}>
+                {gpsActive ? 'GPS active — sending location' : 'Acquiring GPS signal…'}
+              </span>
+            </div>
+          )}
+
+          {/* Stats */}
+          <div style={g.statsRow}>
+            <div style={g.statCard}>
+              <div style={g.statVal}>{todayTrips}</div>
+              <div style={g.statLabel}>Trips{'\n'}today</div>
+            </div>
+            <div style={g.statCard}>
+              <div style={{...g.statVal, color:'#F5B800'}}>${todayEarned.toFixed(0)}</div>
+              <div style={g.statLabel}>Earned</div>
+            </div>
+            <div style={g.statCard}>
+              <div style={g.statVal}>{driver.rating ?? '—'}</div>
+              <div style={g.statLabel}>⭐ Rating</div>
+            </div>
+          </div>
+
+          {/* Driver card */}
+          <div style={g.driverCard}>
+            <div style={g.driverAvatar}>{driver.full_name?.[0] ?? 'D'}</div>
+            <div>
+              <div style={g.driverName}>{driver.full_name}</div>
+              <div style={g.driverSub}>{driver.car_model} · {driver.plate}</div>
+            </div>
+            <div style={{
+              marginLeft:'auto', width:10, height:10, borderRadius:'50%',
+              background: online ? '#5DCAA5' : '#444',
+              boxShadow: online ? '0 0 0 3px rgba(93,202,165,.2)' : 'none',
+            }} />
+          </div>
+
+          {/* Active trip */}
+          {activeTrip && <ActiveTrip trip={activeTrip} onComplete={completeTrip} />}
+        </div>
+
+        {/* Trip request sheet */}
+        {pendingTrip && (
+          <TripRequest
+            trip={pendingTrip}
+            countdown={countdown}
+            onAccept={acceptTrip}
+            onDecline={declineTrip}
+          />
+        )}
+      </div>
+    </>
   )
 }
 
-// ─── Helpers ──────────────────────────────────────────────────
+// ─── Supabase helpers ─────────────────────────────────────────
 async function pushLocation(driverId, lat, lng) {
   const point = `POINT(${lng} ${lat})`
   await Promise.all([
     supabase.from('drivers').update({
-      location: point, last_seen: new Date().toISOString(),
+      location: point,
+      last_seen: new Date().toISOString(),
     }).eq('id', driverId),
-    supabase.from('driver_location_history').insert({ driver_id: driverId, location: point }),
+    supabase.from('driver_location_history').insert({
+      driver_id: driverId,
+      location: point,
+    }),
   ])
 }
 
@@ -419,203 +518,239 @@ async function fetchTripDetails(tripId) {
 }
 
 // ─── Styles ───────────────────────────────────────────────────
-const s = {
+// All sizes use px or env() for safe areas.
+// Inputs are 16px to prevent iOS zoom-on-focus.
+// Buttons are min 48px tall (Apple/Google touch target guidelines).
+const g = {
   screen: {
-    minHeight: '100vh',
+    minHeight: '100dvh',                           // dvh = respects iOS keyboard
+    paddingTop: 'env(safe-area-inset-top, 0px)',   // iPhone notch
+    paddingBottom: 'env(safe-area-inset-bottom, 16px)', // home indicator
     background: '#0D0D14',
-    fontFamily: 'Inter, system-ui, sans-serif',
+    fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
     color: '#fff',
     display: 'flex',
     flexDirection: 'column',
     maxWidth: 430,
     margin: '0 auto',
+    WebkitFontSmoothing: 'antialiased',
   },
-  // Login
+  // ── Login ──
   loginWrap: {
-    flex: 1, display:'flex', flexDirection:'column',
-    alignItems:'center', padding:'48px 28px',
+    flex: 1, display: 'flex', flexDirection: 'column',
+    alignItems: 'center', padding: '48px 24px 32px',
   },
   loginLogo: {
-    width:56, height:56, borderRadius:16,
-    background:'#F5B800', color:'#000',
-    fontSize:28, fontWeight:900,
-    display:'flex', alignItems:'center', justifyContent:'center',
-    marginBottom:12,
+    width: 60, height: 60, borderRadius: 18,
+    background: '#F5B800', color: '#000',
+    fontSize: 30, fontWeight: 900,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 12,
   },
-  loginBrand: { fontSize:20, fontWeight:900, letterSpacing:1 },
-  loginSub:   { fontSize:12, color:'rgba(255,255,255,.4)', marginBottom:4 },
-  label: { fontSize:11, fontWeight:700, color:'rgba(255,255,255,.4)', textTransform:'uppercase', letterSpacing:.5, marginBottom:6 },
+  loginBrand: { fontSize: 22, fontWeight: 900, letterSpacing: 1 },
+  loginSub:   { fontSize: 13, color: 'rgba(255,255,255,.35)', marginBottom: 4 },
+  iosHint: {
+    marginTop: 24, fontSize: 11, color: 'rgba(255,255,255,.25)',
+    textAlign: 'center', lineHeight: 1.5,
+  },
+  label: {
+    fontSize: 11, fontWeight: 700,
+    color: 'rgba(255,255,255,.4)',
+    textTransform: 'uppercase', letterSpacing: .5, marginBottom: 6,
+  },
   input: {
-    width:'100%', padding:'12px 14px',
-    background:'rgba(255,255,255,.06)',
-    border:'1px solid rgba(255,255,255,.1)',
-    borderRadius:10, color:'#fff',
-    fontSize:14, fontFamily:'inherit',
-    outline:'none', boxSizing:'border-box',
+    width: '100%', padding: '13px 14px',
+    background: 'rgba(255,255,255,.07)',
+    border: '1px solid rgba(255,255,255,.1)',
+    borderRadius: 12, color: '#fff',
+    fontSize: 16,                   // ← 16px prevents iOS zoom-on-focus
+    fontFamily: 'inherit',
+    outline: 'none', boxSizing: 'border-box',
+    WebkitAppearance: 'none',
   },
   errorBox: {
-    marginTop:10, padding:'10px 14px',
-    background:'rgba(240,149,149,.1)',
-    border:'1px solid rgba(240,149,149,.2)',
-    borderRadius:8, fontSize:13, color:'#F09595',
+    marginTop: 10, padding: '11px 14px',
+    background: 'rgba(240,149,149,.1)',
+    border: '1px solid rgba(240,149,149,.2)',
+    borderRadius: 10, fontSize: 13, color: '#F09595',
   },
-  // Header
+  // ── Header ──
   header: {
-    display:'flex', alignItems:'center', gap:12,
-    padding:'18px 20px 14px',
-    borderBottom:'1px solid rgba(255,255,255,.06)',
+    display: 'flex', alignItems: 'center', gap: 12,
+    padding: '16px 20px 14px',
+    borderBottom: '1px solid rgba(255,255,255,.06)',
   },
   headerLogo: {
-    width:34, height:34, borderRadius:9,
-    background:'#F5B800', color:'#000',
-    fontSize:16, fontWeight:900,
-    display:'flex', alignItems:'center', justifyContent:'center',
+    width: 34, height: 34, borderRadius: 9,
+    background: '#F5B800', color: '#000',
+    fontSize: 16, fontWeight: 900,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
   },
-  headerBrand: { fontSize:13, fontWeight:900, letterSpacing:.5 },
-  headerSub:   { fontSize:10, color:'rgba(255,255,255,.35)' },
+  headerBrand: { fontSize: 13, fontWeight: 900, letterSpacing: .5 },
+  headerSub:   { fontSize: 10, color: 'rgba(255,255,255,.3)' },
   logoutBtn: {
-    marginLeft:'auto', padding:'6px 14px',
-    background:'rgba(255,255,255,.06)',
-    border:'1px solid rgba(255,255,255,.1)',
-    borderRadius:8, color:'rgba(255,255,255,.5)',
-    fontSize:12, cursor:'pointer', fontFamily:'inherit',
+    marginLeft: 'auto', padding: '8px 16px',
+    background: 'rgba(255,255,255,.05)',
+    border: '1px solid rgba(255,255,255,.1)',
+    borderRadius: 8, color: 'rgba(255,255,255,.4)',
+    fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+    minHeight: 36,
+    touchAction: 'manipulation',
   },
-  body: { flex:1, padding:'28px 20px 32px', display:'flex', flexDirection:'column', gap:20 },
-  // Toggle
-  toggleWrap: { display:'flex', flexDirection:'column', alignItems:'center', gap:16 },
+  // ── Body ──
+  body: {
+    flex: 1, padding: '28px 20px',
+    display: 'flex', flexDirection: 'column', gap: 18,
+  },
+  // ── Toggle ──
+  toggleWrap: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 },
   toggleBtn: {
-    width:160, height:160, borderRadius:'50%',
-    border:'none', cursor:'pointer',
-    transition:'all .35s ease',
-    display:'flex', alignItems:'center', justifyContent:'center',
+    width: 164, height: 164, borderRadius: '50%',
+    border: 'none', cursor: 'pointer',
+    transition: 'all .35s ease',
+    display: 'flex', flexDirection: 'column',
+    alignItems: 'center', justifyContent: 'center',
+    gap: 4, touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
   },
-  toggleInner: { textAlign:'center' },
-  toggleLabel: { fontSize:36, fontWeight:900, color:'#fff', lineHeight:1 },
-  toggleSub:   { fontSize:12, fontWeight:700, color:'rgba(255,255,255,.7)', letterSpacing:2, marginTop:4 },
-  toggleHint:  { fontSize:12, color:'rgba(255,255,255,.35)', textAlign:'center' },
-  // GPS pill
+  toggleLabel: { fontSize: 38, fontWeight: 900, color: '#fff', lineHeight: 1 },
+  toggleSub:   { fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,.7)', letterSpacing: 2 },
+  toggleHint:  { fontSize: 12, color: 'rgba(255,255,255,.3)', textAlign: 'center' },
+  // ── GPS pill ──
   gpsPill: {
-    display:'flex', alignItems:'center', gap:8,
-    padding:'10px 16px', borderRadius:10,
-    border:'1px solid',
+    display: 'flex', alignItems: 'center', gap: 9,
+    padding: '11px 16px', borderRadius: 12,
+    border: '1px solid',
   },
-  gpsDot: { width:8, height:8, borderRadius:'50%', flexShrink:0 },
-  // Stats
-  statsRow: { display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 },
+  gpsDot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
+  // ── Stats ──
+  statsRow: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 },
   statCard: {
-    background:'rgba(255,255,255,.05)',
-    border:'1px solid rgba(255,255,255,.08)',
-    borderRadius:12, padding:'14px 10px',
-    textAlign:'center',
+    background: 'rgba(255,255,255,.05)',
+    border: '1px solid rgba(255,255,255,.08)',
+    borderRadius: 14, padding: '16px 10px', textAlign: 'center',
   },
-  statVal:   { fontSize:22, fontWeight:800, color:'#fff' },
-  statLabel: { fontSize:10, color:'rgba(255,255,255,.4)', marginTop:4, whiteSpace:'pre-line', lineHeight:1.4 },
-  // Driver info
-  driverInfo: {
-    display:'flex', alignItems:'center', gap:12,
-    background:'rgba(255,255,255,.04)',
-    border:'1px solid rgba(255,255,255,.07)',
-    borderRadius:12, padding:'12px 14px',
+  statVal:   { fontSize: 24, fontWeight: 800 },
+  statLabel: { fontSize: 10, color: 'rgba(255,255,255,.35)', marginTop: 4, whiteSpace: 'pre-line', lineHeight: 1.4 },
+  // ── Driver card ──
+  driverCard: {
+    display: 'flex', alignItems: 'center', gap: 12,
+    background: 'rgba(255,255,255,.04)',
+    border: '1px solid rgba(255,255,255,.07)',
+    borderRadius: 14, padding: '14px 16px',
   },
   driverAvatar: {
-    width:40, height:40, borderRadius:10,
-    background:'#F5B800', color:'#000',
-    fontSize:18, fontWeight:900,
-    display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+    width: 42, height: 42, borderRadius: 11,
+    background: '#F5B800', color: '#000',
+    fontSize: 20, fontWeight: 900, flexShrink: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
-  driverName: { fontSize:14, fontWeight:700 },
-  driverSub:  { fontSize:11, color:'rgba(255,255,255,.4)', marginTop:2 },
-  // Buttons
-  btnYellow: {
-    flex:1, width:'100%', padding:'13px',
-    background:'#F5B800', color:'#000',
-    border:'none', borderRadius:12,
-    fontSize:14, fontWeight:700,
-    cursor:'pointer', fontFamily:'inherit',
+  driverName: { fontSize: 14, fontWeight: 700 },
+  driverSub:  { fontSize: 11, color: 'rgba(255,255,255,.35)', marginTop: 2 },
+  // ── Warn bar ──
+  warnBar: {
+    background: 'rgba(239,159,39,.15)', color: '#EF9F27',
+    borderBottom: '1px solid rgba(239,159,39,.2)',
+    fontSize: 12, fontWeight: 600, textAlign: 'center', padding: '10px 16px',
   },
-  btnOutline: {
-    flex:1, padding:'13px',
-    background:'transparent',
-    border:'1px solid rgba(255,255,255,.15)',
-    borderRadius:12, color:'rgba(255,255,255,.6)',
-    fontSize:13, fontWeight:600,
-    cursor:'pointer', fontFamily:'inherit',
-  },
-  btnDecline: {
-    flex:1, padding:'14px',
-    background:'rgba(240,149,149,.1)',
-    border:'1px solid rgba(240,149,149,.2)',
-    borderRadius:12, color:'#F09595',
-    fontSize:14, fontWeight:700,
-    cursor:'pointer', fontFamily:'inherit',
-  },
-  btnAccept: {
-    flex:2, padding:'14px',
-    background:'#F5B800', color:'#000',
-    border:'none', borderRadius:12,
-    fontSize:14, fontWeight:700,
-    cursor:'pointer', fontFamily:'inherit',
-  },
-  // Active trip
+  // ── Active trip ──
   activeTripCard: {
-    background:'rgba(255,255,255,.05)',
-    border:'1px solid rgba(255,255,255,.1)',
-    borderRadius:14, padding:'16px',
+    background: 'rgba(255,255,255,.05)',
+    border: '1px solid rgba(255,255,255,.1)',
+    borderRadius: 14, padding: '16px',
   },
-  activeTripHeader: { display:'flex', alignItems:'center', gap:8, marginBottom:10 },
-  activeTripPulse: {
-    width:8, height:8, borderRadius:'50%', background:'#5DCAA5',
-    boxShadow:'0 0 0 3px rgba(93,202,165,.25)',
+  activeTripHeader: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 },
+  pulsingDot: {
+    width: 8, height: 8, borderRadius: '50%', background: '#5DCAA5',
+    boxShadow: '0 0 0 3px rgba(93,202,165,.25)',
+    animation: 'pulse 2s infinite',
   },
-  activeTripCustomer: { fontSize:16, fontWeight:800, marginBottom:2 },
-  activeTripPhone: { fontSize:12, color:'#F5B800', textDecoration:'none', display:'block', marginBottom:4 },
-  // Trip request overlay
-  tripOverlay: {
-    position:'fixed', inset:0,
-    background:'rgba(0,0,0,.8)',
-    display:'flex', alignItems:'flex-end',
-    padding:'0 0 24px', zIndex:100,
+  activeTripName:  { fontSize: 17, fontWeight: 800 },
+  activeTripPhone: { fontSize: 13, color: '#F5B800', textDecoration: 'none', display: 'block', marginBottom: 4 },
+  // ── Route rows ──
+  routeRow:   { display: 'flex', alignItems: 'flex-start', gap: 12 },
+  routeVline: { width: 1, height: 14, background: 'rgba(255,255,255,.1)', marginLeft: 4, marginBottom: 2 },
+  dotGreen:   { width: 10, height: 10, borderRadius: '50%', background: '#5DCAA5', marginTop: 3, flexShrink: 0 },
+  dotRed:     { width: 10, height: 10, borderRadius: '50%', background: '#F09595', marginTop: 3, flexShrink: 0 },
+  routeLabel: { fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,.35)', letterSpacing: .6, marginBottom: 2 },
+  routeAddr:  { fontSize: 13, fontWeight: 600 },
+  // ── Meta row ──
+  metaRow:  { display: 'flex', marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,.07)' },
+  metaItem: { flex: 1, textAlign: 'center' },
+  metaLabel: { fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,.35)', letterSpacing: .6, marginBottom: 3 },
+  metaVal:   { fontSize: 14, fontWeight: 800 },
+  // ── Trip request overlay ──
+  overlay: {
+    position: 'fixed', inset: 0,
+    background: 'rgba(0,0,0,.8)',
+    display: 'flex', alignItems: 'flex-end',
+    paddingBottom: 'env(safe-area-inset-bottom, 0px)',  // home indicator
+    zIndex: 100,
   },
   tripCard: {
-    width:'100%', maxWidth:430, margin:'0 auto',
-    background:'#1A1A24',
-    border:'1px solid rgba(255,255,255,.1)',
-    borderRadius:'20px 20px 16px 16px',
-    overflow:'hidden',
+    width: '100%', maxWidth: 430, margin: '0 auto',
+    background: '#1A1A24',
+    border: '1px solid rgba(255,255,255,.1)',
+    borderRadius: '20px 20px 0 0',
+    overflow: 'hidden',
+    animation: 'slideUp .25s ease',
   },
-  countdownBar: { height:4, background:'rgba(255,255,255,.08)', width:'100%' },
-  countdownFill: { height:'100%', transition:'width 1s linear, background .5s' },
+  countdownBar:  { height: 4, background: 'rgba(255,255,255,.08)' },
+  countdownFill: { height: '100%', transition: 'width 1s linear, background .5s' },
   tripBanner: {
-    display:'flex', alignItems:'center', gap:8,
-    padding:'12px 18px',
-    background:'rgba(245,184,0,.1)',
-    fontSize:11, fontWeight:800,
-    color:'#F5B800', letterSpacing:.8,
-    borderBottom:'1px solid rgba(245,184,0,.15)',
+    display: 'flex', alignItems: 'center', gap: 8,
+    padding: '13px 18px',
+    background: 'rgba(245,184,0,.1)',
+    fontSize: 11, fontWeight: 800, color: '#F5B800', letterSpacing: .8,
+    borderBottom: '1px solid rgba(245,184,0,.15)',
   },
   tripBannerDot: {
-    width:7, height:7, borderRadius:'50%',
-    background:'#F5B800',
-    boxShadow:'0 0 6px #F5B800',
-    flexShrink:0,
+    width: 7, height: 7, borderRadius: '50%',
+    background: '#F5B800', boxShadow: '0 0 6px #F5B800', flexShrink: 0,
+    animation: 'pulse 1s infinite',
   },
-  tripBody: { padding:'16px 18px' },
-  tripRow:  { display:'flex', alignItems:'flex-start', gap:12 },
-  tripVLine: { width:1, height:14, background:'rgba(255,255,255,.1)', marginLeft:5, marginBottom:2 },
-  tripDotGreen: { width:10, height:10, borderRadius:'50%', background:'#5DCAA5', marginTop:3, flexShrink:0 },
-  tripDotRed:   { width:10, height:10, borderRadius:'50%', background:'#F09595', marginTop:3, flexShrink:0 },
-  tripLabel: { fontSize:9, fontWeight:700, color:'rgba(255,255,255,.35)', letterSpacing:.6, marginBottom:2 },
-  tripAddr:  { fontSize:13, fontWeight:600, color:'#fff' },
-  tripMeta:  { display:'flex', gap:0, marginTop:14, paddingTop:14, borderTop:'1px solid rgba(255,255,255,.07)' },
-  tripMetaItem: { flex:1, textAlign:'center' },
-  tripMetaLabel: { fontSize:9, fontWeight:700, color:'rgba(255,255,255,.35)', letterSpacing:.6, marginBottom:3 },
-  tripMetaVal:   { fontSize:14, fontWeight:800 },
-  tripBtns: { display:'flex', gap:10, padding:'0 18px 18px' },
-  // Warn banner
-  warnBar: {
-    background:'rgba(239,159,39,.15)', color:'#EF9F27',
-    border:'1px solid rgba(239,159,39,.2)',
-    fontSize:12, fontWeight:600,
-    textAlign:'center', padding:'10px',
+  tripBody: { padding: '16px 18px' },
+  tripBtns: {
+    display: 'flex', gap: 10, padding: '4px 18px 20px',
+  },
+  // ── Buttons (min 48px height for touch targets) ──
+  btnYellow: {
+    flex: 1, padding: '14px',
+    background: '#F5B800', color: '#000',
+    border: 'none', borderRadius: 12,
+    fontSize: 15, fontWeight: 700,
+    cursor: 'pointer', fontFamily: 'inherit',
+    minHeight: 48, touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  btnOutline: {
+    flex: 1, padding: '14px',
+    background: 'transparent',
+    border: '1px solid rgba(255,255,255,.15)',
+    borderRadius: 12, color: 'rgba(255,255,255,.5)',
+    fontSize: 14, fontWeight: 600,
+    cursor: 'pointer', fontFamily: 'inherit',
+    minHeight: 48, touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  btnDecline: {
+    flex: 1, padding: '14px',
+    background: 'rgba(240,149,149,.1)',
+    border: '1px solid rgba(240,149,149,.2)',
+    borderRadius: 12, color: '#F09595',
+    fontSize: 15, fontWeight: 700,
+    cursor: 'pointer', fontFamily: 'inherit',
+    minHeight: 48, touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  btnAccept: {
+    flex: 2, padding: '14px',
+    background: '#F5B800', color: '#000',
+    border: 'none', borderRadius: 12,
+    fontSize: 15, fontWeight: 700,
+    cursor: 'pointer', fontFamily: 'inherit',
+    minHeight: 48, touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
   },
 }
