@@ -63,18 +63,30 @@ function useGPS({ active, onPosition }) {
   }, [active, startWatch])
 }
 
+const SESSION_KEY = 'allway_driver_session'
+
+function saveSession(driver) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(driver))
+}
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)) } catch { return null }
+}
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY)
+}
+
 // ─── Login ────────────────────────────────────────────────────
 function DriverLogin({ onLogin }) {
   const [phone, setPhone]     = useState('')
   const [pin, setPin]         = useState('')
   const [error, setError]     = useState('')
   const [loading, setLoading] = useState(false)
+  const [pinFocused, setPinFocused] = useState(false)
 
   async function handleLogin(e) {
     e.preventDefault()
     setError('')
     setLoading(true)
-    // Strip everything except digits so "70 111 222" and "70111222" both work
     const digits = phone.replace(/\D/g, '')
     const { data, error: err } = await supabase
       .from('drivers')
@@ -84,37 +96,104 @@ function DriverLogin({ onLogin }) {
       .single()
     setLoading(false)
     if (err || !data) { setError('Incorrect phone number or PIN.'); return }
+    saveSession(data)
     onLogin(data)
   }
 
   return (
     <div style={g.screen}>
+      <style>{`
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+        body { overscroll-behavior: none; margin: 0; }
+        @keyframes fadeUp {
+          from { opacity:0; transform:translateY(16px) }
+          to   { opacity:1; transform:translateY(0) }
+        }
+        .drv-input:focus { border-color: #F5B800 !important; box-shadow: 0 0 0 3px rgba(245,184,0,.15) !important; }
+      `}</style>
+
+      {/* Background decoration */}
+      <div style={g.loginBg}>
+        <div style={g.bgCircle1} />
+        <div style={g.bgCircle2} />
+      </div>
+
       <div style={g.loginWrap}>
-        <div style={g.loginLogo}>A</div>
-        <div style={g.loginBrand}>ALLWAY <span style={{color:'#F5B800'}}>TAXI</span></div>
-        <div style={g.loginSub}>Driver App</div>
+        {/* Logo */}
+        <div style={{animation:'fadeUp .4s ease both', animationDelay:'.05s'}}>
+          <div style={g.loginLogoWrap}>
+            <div style={g.loginLogo}>A</div>
+          </div>
+          <div style={g.loginBrand}>ALLWAY <span style={{color:'#F5B800'}}>TAXI</span></div>
+          <div style={g.loginSub}>Driver Portal</div>
+        </div>
 
-        <form onSubmit={handleLogin} style={{width:'100%', marginTop:28}}>
-          <div style={g.label}>Phone number</div>
-          {/* font-size 16px prevents iOS zoom-on-focus */}
-          <input
-            style={g.input} type="tel" inputMode="numeric" placeholder="70111222"
-            value={phone} onChange={e => setPhone(e.target.value)} required
-          />
-          <div style={{...g.label, marginTop:14}}>PIN</div>
-          <input
-            style={g.input} type="password" inputMode="numeric"
-            placeholder="4-digit PIN" maxLength={6}
-            value={pin} onChange={e => setPin(e.target.value)} required
-          />
-          {error && <div style={g.errorBox}>{error}</div>}
-          <button style={g.btnYellow} type="submit" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign In'}
-          </button>
-        </form>
+        {/* Card */}
+        <div style={{...g.loginCard, animation:'fadeUp .4s ease both', animationDelay:'.15s'}}>
+          <form onSubmit={handleLogin}>
+            {/* Phone */}
+            <div style={g.fieldWrap}>
+              <div style={g.fieldIcon}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="2" strokeLinecap="round">
+                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.0 1.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92v2z"/>
+                </svg>
+              </div>
+              <input
+                className="drv-input"
+                style={g.fieldInput}
+                type="tel"
+                inputMode="numeric"
+                placeholder="70111222"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                required
+              />
+            </div>
 
-        <div style={g.iosHint}>
-          For the best experience on iPhone, tap <strong>Share → Add to Home Screen</strong>
+            {/* PIN */}
+            <div style={{...g.fieldWrap, marginTop:12}}>
+              <div style={g.fieldIcon}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="2" strokeLinecap="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0110 0v4"/>
+                </svg>
+              </div>
+              <input
+                className="drv-input"
+                style={g.fieldInput}
+                type="password"
+                inputMode="numeric"
+                placeholder="PIN"
+                maxLength={6}
+                value={pin}
+                onChange={e => setPin(e.target.value)}
+                required
+              />
+            </div>
+
+            {error && (
+              <div style={g.errorBox}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{flexShrink:0}}>
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                {error}
+              </div>
+            )}
+
+            <button style={{...g.btnYellow, marginTop:20, width:'100%'}} type="submit" disabled={loading}>
+              {loading ? (
+                <span style={{display:'flex', alignItems:'center', justifyContent:'center', gap:8}}>
+                  <span style={{width:16, height:16, border:'2px solid rgba(0,0,0,.2)', borderTopColor:'#000', borderRadius:'50%', display:'inline-block', animation:'spin .7s linear infinite'}}/>
+                  Signing in…
+                </span>
+              ) : 'Sign In'}
+            </button>
+          </form>
+        </div>
+
+        {/* iOS hint */}
+        <div style={{...g.iosHint, animation:'fadeUp .4s ease both', animationDelay:'.25s'}}>
+          iPhone? Tap <strong style={{color:'rgba(255,255,255,.5)'}}>Share → Add to Home Screen</strong> for best experience
         </div>
       </div>
     </div>
@@ -228,7 +307,8 @@ function ActiveTrip({ trip, onComplete }) {
 
 // ─── Main ─────────────────────────────────────────────────────
 export default function DriverApp() {
-  const [driver, setDriver]             = useState(null)
+  // Restore session from localStorage on page load/refresh
+  const [driver, setDriver]             = useState(() => loadSession())
   const [online, setOnline]             = useState(false)
   const [gpsActive, setGpsActive]       = useState(false)
   const [coords, setCoords]             = useState(null)
@@ -395,7 +475,7 @@ export default function DriverApp() {
             <div style={g.headerBrand}>ALLWAY <span style={{color:'#F5B800'}}>TAXI</span></div>
             <div style={g.headerSub}>Driver app</div>
           </div>
-          <button style={g.logoutBtn} onClick={() => { goOffline(); setDriver(null) }}>Exit</button>
+          <button style={g.logoutBtn} onClick={() => { goOffline(); clearSession(); setDriver(null) }}>Exit</button>
         </div>
 
         {/* Body */}
@@ -536,23 +616,75 @@ const g = {
     WebkitFontSmoothing: 'antialiased',
   },
   // ── Login ──
+  loginBg: {
+    position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none',
+  },
+  bgCircle1: {
+    position: 'absolute', width: 420, height: 420, borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(245,184,0,.12) 0%, transparent 70%)',
+    top: -120, right: -100,
+  },
+  bgCircle2: {
+    position: 'absolute', width: 360, height: 360, borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(93,202,165,.08) 0%, transparent 70%)',
+    bottom: -80, left: -80,
+  },
   loginWrap: {
-    flex: 1, display: 'flex', flexDirection: 'column',
-    alignItems: 'center', padding: '48px 24px 32px',
+    flex: 1, position: 'relative', zIndex: 1,
+    display: 'flex', flexDirection: 'column',
+    alignItems: 'center', justifyContent: 'center',
+    padding: '40px 24px 40px',
+    gap: 24,
+  },
+  loginLogoWrap: {
+    display: 'flex', justifyContent: 'center', marginBottom: 14,
   },
   loginLogo: {
-    width: 60, height: 60, borderRadius: 18,
-    background: '#F5B800', color: '#000',
-    fontSize: 30, fontWeight: 900,
+    width: 68, height: 68, borderRadius: 20,
+    background: 'linear-gradient(135deg, #F5B800, #e6a800)',
+    color: '#000', fontSize: 34, fontWeight: 900,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 12,
+    boxShadow: '0 8px 32px rgba(245,184,0,.35)',
   },
-  loginBrand: { fontSize: 22, fontWeight: 900, letterSpacing: 1 },
-  loginSub:   { fontSize: 13, color: 'rgba(255,255,255,.35)', marginBottom: 4 },
+  loginBrand: {
+    fontSize: 24, fontWeight: 900, letterSpacing: 1.5,
+    textAlign: 'center', marginBottom: 4,
+  },
+  loginSub: {
+    fontSize: 13, color: 'rgba(255,255,255,.3)',
+    textAlign: 'center', letterSpacing: .3,
+  },
+  loginCard: {
+    width: '100%', maxWidth: 360,
+    background: 'rgba(255,255,255,.05)',
+    border: '1px solid rgba(255,255,255,.09)',
+    borderRadius: 20,
+    padding: '28px 24px',
+    backdropFilter: 'blur(12px)',
+  },
+  fieldWrap: {
+    position: 'relative', display: 'flex', alignItems: 'center',
+  },
+  fieldIcon: {
+    position: 'absolute', left: 14, zIndex: 1, pointerEvents: 'none',
+    display: 'flex', alignItems: 'center',
+  },
+  fieldInput: {
+    width: '100%', padding: '14px 14px 14px 44px',
+    background: 'rgba(255,255,255,.07)',
+    border: '1.5px solid rgba(255,255,255,.1)',
+    borderRadius: 12, color: '#fff',
+    fontSize: 16,
+    fontFamily: 'inherit',
+    outline: 'none',
+    WebkitAppearance: 'none',
+    transition: 'border-color .2s, box-shadow .2s',
+  },
   iosHint: {
-    marginTop: 24, fontSize: 11, color: 'rgba(255,255,255,.25)',
-    textAlign: 'center', lineHeight: 1.5,
+    fontSize: 11, color: 'rgba(255,255,255,.2)',
+    textAlign: 'center', lineHeight: 1.6, maxWidth: 280,
   },
+  // kept for other uses
   label: {
     fontSize: 11, fontWeight: 700,
     color: 'rgba(255,255,255,.4)',
@@ -563,16 +695,17 @@ const g = {
     background: 'rgba(255,255,255,.07)',
     border: '1px solid rgba(255,255,255,.1)',
     borderRadius: 12, color: '#fff',
-    fontSize: 16,                   // ← 16px prevents iOS zoom-on-focus
+    fontSize: 16,
     fontFamily: 'inherit',
     outline: 'none', boxSizing: 'border-box',
     WebkitAppearance: 'none',
   },
   errorBox: {
-    marginTop: 10, padding: '11px 14px',
-    background: 'rgba(240,149,149,.1)',
+    marginTop: 12, padding: '11px 14px',
+    background: 'rgba(240,149,149,.08)',
     border: '1px solid rgba(240,149,149,.2)',
     borderRadius: 10, fontSize: 13, color: '#F09595',
+    display: 'flex', alignItems: 'center', gap: 8,
   },
   // ── Header ──
   header: {
