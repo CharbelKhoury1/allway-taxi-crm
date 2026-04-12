@@ -39,8 +39,9 @@ function useGPS({ active, onPosition }) {
 
 // ─── Session ─────────────────────────────────────────────────
 const SESSION_KEY = 'allway_driver_session'
-const saveSession  = d  => localStorage.setItem(SESSION_KEY, JSON.stringify(d))
-const loadSession  = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY)) } catch { return null } }
+const saveSession  = (d, wasOnline = false) => localStorage.setItem(SESSION_KEY, JSON.stringify({ ...d, _wasOnline: wasOnline }))
+const loadSession  = () => { try { const s = JSON.parse(localStorage.getItem(SESSION_KEY)); if (!s) return null; const { _wasOnline, ...d } = s; return d } catch { return null } }
+const loadWasOnline = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY))?._wasOnline ?? false } catch { return false } }
 const clearSession = () => localStorage.removeItem(SESSION_KEY)
 
 // ─── Shift timer hook ─────────────────────────────────────────
@@ -726,6 +727,7 @@ export default function DriverApp() {
       if (t.status === 'accepted' || t.status === 'on_trip') fetchTripDetails(t.id).then(full => { setActiveTrip(full); setPendingTrip(null); clearInterval(cdTimer.current) })
       if (t.status === 'completed' || t.status === 'cancelled') setActiveTrip(null)
     }).subscribe()
+    saveSession(driver, true)   // persist online=true so a refresh auto-resumes
     setOnline(true)
   }, [driver])
 
@@ -733,8 +735,16 @@ export default function DriverApp() {
     clearInterval(pingTimer.current); clearInterval(cdTimer.current)
     wakeLockRef.current?.release(); supabase.removeAllChannels()
     if (driver) await supabase.from('drivers').update({ online:false, status:'offline' }).eq('id', driver.id)
+    saveSession(driver, false)  // persist online=false so refresh stays offline
     setOnline(false); setGpsActive(false); setCoords(null); setActiveTrip(null); setPendingTrip(null)
   }, [driver])
+
+  // Auto-resume GPS if driver was online before a refresh
+  useEffect(() => {
+    if (driver && loadWasOnline()) {
+      goOnline()
+    }
+  }, [goOnline]) // goOnline is stable (useCallback), so this runs effectively once
 
   function startCountdown() {
     setCountdown(120); clearInterval(cdTimer.current)
@@ -791,7 +801,8 @@ export default function DriverApp() {
   ]
 
   return (
-    <div style={g.screen}>
+    /* Outer shell: owns the FULL physical screen edge-to-edge */
+    <div style={{ position:'fixed', inset:0, background:'#0D0D14' }}>
       <style>{`
         * { -webkit-tap-highlight-color:transparent; box-sizing:border-box; font-family:'Inter',system-ui,sans-serif; }
         html, body { margin:0; padding:0; background:#0D0D14; overscroll-behavior:none; }
@@ -804,38 +815,52 @@ export default function DriverApp() {
         .tab-item:active { transform:scale(.9); opacity:.7; }
         .action-btn { transition: all .2s ease; }
         .action-btn:active { transform:scale(.96); opacity:.8; }
+        /* Safe-area: tab bar background bleeds into home indicator zone */
+        .drv-tabbar {
+          flex-shrink: 0;
+          background: rgba(10,10,18,0.97);
+          -webkit-backdrop-filter: blur(20px) saturate(180%);
+          backdrop-filter: blur(20px) saturate(180%);
+          border-top: 1px solid rgba(255,255,255,0.07);
+          display: flex;
+          /* paddingBottom fills the home-indicator zone in standalone PWA */
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
       `}</style>
 
-      {/* Scrollable content — flex:1 fills all space above the tab bar */}
-      <div style={{ flex:1, overflowY:'auto', overflowX:'hidden', WebkitOverflowScrolling:'touch', minHeight:0 }}>
-        {tab === 'home' && (
-          <div style={{ animation:'slideUp .35s ease-out' }}>
-            <HomeTab
-              driver={driver} online={online} gpsActive={gpsActive}
-              onToggle={online ? goOffline : goOnline}
-              activeTrip={activeTrip} onComplete={completeTrip}
-              todayStats={todayStats} weekStats={weekStats}
-              shiftTime={shiftTime} coords={coords}
-            />
-          </div>
-        )}
-        {tab === 'trips'   && <div style={{ animation:'slideUp .35s ease-out' }}><TripsTab driverId={driver.id}/></div>}
-        {tab === 'account' && (
-          <div style={{ animation:'slideUp .35s ease-out' }}>
-            <AccountTab driver={driver} onLogout={() => { goOffline(); clearSession(); setDriver(null) }}/>
-          </div>
-        )}
-      </div>
+      {/* Inner container: constrained to 430px, full shell height */}
+      <div style={g.screen}>
+        {/* Scrollable content */}
+        <div style={{ flex:1, overflowY:'auto', overflowX:'hidden', WebkitOverflowScrolling:'touch', minHeight:0 }}>
+          {tab === 'home' && (
+            <div style={{ animation:'slideUp .35s ease-out' }}>
+              <HomeTab
+                driver={driver} online={online} gpsActive={gpsActive}
+                onToggle={online ? goOffline : goOnline}
+                activeTrip={activeTrip} onComplete={completeTrip}
+                todayStats={todayStats} weekStats={weekStats}
+                shiftTime={shiftTime} coords={coords}
+              />
+            </div>
+          )}
+          {tab === 'trips'   && <div style={{ animation:'slideUp .35s ease-out' }}><TripsTab driverId={driver.id}/></div>}
+          {tab === 'account' && (
+            <div style={{ animation:'slideUp .35s ease-out' }}>
+              <AccountTab driver={driver} onLogout={() => { goOffline(); clearSession(); setDriver(null) }}/>
+            </div>
+          )}
+        </div>
 
-      {/* ── Tab bar — plain flex child, always at bottom of 430px container */}
-      <div style={{ flexShrink:0, background:'rgba(10,10,18,0.97)', backdropFilter:'blur(20px) saturate(180%)', WebkitBackdropFilter:'blur(20px)', borderTop:'1px solid rgba(255,255,255,.07)', display:'flex', paddingBottom:'env(safe-area-inset-bottom, 0px)' }}>
-        {TABS.map(t => (
-          <div key={t.id} className="tab-item" onClick={() => setTab(t.id)} style={{ flex:1, padding:'12px 0 10px', display:'flex', flexDirection:'column', alignItems:'center', gap:4, cursor:'pointer', color:tab===t.id?'#F5B800':'rgba(255,255,255,.28)', position:'relative' }}>
-            {tab === t.id && <div style={{ position:'absolute', top:0, left:'50%', transform:'translateX(-50%)', width:28, height:2, background:'#F5B800', borderRadius:'0 0 4px 4px' }}/>}
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">{t.icon}</svg>
-            <span style={{ fontSize:10, fontWeight:tab===t.id?800:600 }}>{t.l}</span>
-          </div>
-        ))}
+        {/* Tab bar — CSS class handles safe-area-inset-bottom padding */}
+        <div className="drv-tabbar">
+          {TABS.map(t => (
+            <div key={t.id} className="tab-item" onClick={() => setTab(t.id)} style={{ flex:1, padding:'12px 0 10px', display:'flex', flexDirection:'column', alignItems:'center', gap:4, cursor:'pointer', color:tab===t.id?'#F5B800':'rgba(255,255,255,.28)', position:'relative' }}>
+              {tab === t.id && <div style={{ position:'absolute', top:0, left:'50%', transform:'translateX(-50%)', width:28, height:2, background:'#F5B800', borderRadius:'0 0 4px 4px' }}/>}
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">{t.icon}</svg>
+              <span style={{ fontSize:10, fontWeight:tab===t.id?800:600 }}>{t.l}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {pendingTrip && (
@@ -847,7 +872,13 @@ export default function DriverApp() {
 
 // ─── Helpers ─────────────────────────────────────────────────
 async function pushLocation(id, lat, lng) {
-  await supabase.from('drivers').update({ location:`POINT(${lng} ${lat})`, last_seen:new Date().toISOString() }).eq('id', id)
+  // Write both the PostGIS geometry AND plain lat/lng columns so the admin map can read them
+  await supabase.from('drivers').update({
+    location: `POINT(${lng} ${lat})`,
+    lat,
+    lng,
+    last_seen: new Date().toISOString()
+  }).eq('id', id)
 }
 async function fetchTripDetails(id) {
   const { data } = await supabase.from('trips').select('*, customers(full_name, phone)').eq('id', id).single()
@@ -856,7 +887,7 @@ async function fetchTripDetails(id) {
 
 // ─── Styles ───────────────────────────────────────────────────
 const g = {
-  screen: { position:'fixed', top:0, bottom:0, left:0, right:0, maxWidth:430, margin:'0 auto', background:'#0D0D14', color:'#fff', display:'flex', flexDirection:'column', overflow:'hidden' },
+  screen: { height:'100%', maxWidth:430, margin:'0 auto', background:'#0D0D14', color:'#fff', display:'flex', flexDirection:'column', overflow:'hidden' },
   loginBg: { position:'absolute', inset:0, zIndex:-1, background:'#0D0D14', overflow:'hidden' },
   bgCircle1: { position:'absolute', top:'-15%', left:'-25%', width:'80%', height:'55%', background:'radial-gradient(circle, rgba(245,184,0,0.08) 0%, transparent 70%)' },
   bgCircle2: { position:'absolute', bottom:'-10%', right:'-15%', width:'70%', height:'45%', background:'radial-gradient(circle, rgba(93,202,165,0.06) 0%, transparent 70%)' },

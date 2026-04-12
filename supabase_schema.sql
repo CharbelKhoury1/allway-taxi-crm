@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS drivers (
   online        boolean DEFAULT false,
   status        text DEFAULT 'offline' CHECK (status IN ('available','on_trip','offline')),
   location      geometry(Point, 4326),
+  lat           numeric(10,7),
+  lng           numeric(10,7),
   last_seen     timestamptz,
   license_url   text,
   insurance_url text,
