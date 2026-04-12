@@ -765,16 +765,40 @@ export default function DriverApp() {
   const TAB_H = 'calc(68px + env(safe-area-inset-bottom, 0px))'
 
   const TABS = [
-    { id:'home',    l:'Home',    icon:<><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></> },
-    { id:'trips',   l:'Trips',   icon:<><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></> },
-    { id:'account', l:'Account', icon:<><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></> },
+    {
+      id:'home', l:'Home',
+      icon:<>
+        {/* Speedometer / dashboard */}
+        <path d="M12 2a10 10 0 1 0 10 10" strokeLinecap="round"/>
+        <path d="M12 2A10 10 0 0 1 22 12" strokeLinecap="round" strokeDasharray="2 3"/>
+        <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
+        <line x1="12" y1="10" x2="16" y2="7" strokeLinecap="round"/>
+      </>
+    },
+    {
+      id:'trips', l:'Trips',
+      icon:<>
+        {/* Car side-view */}
+        <path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h1l3-3h8l3 3h1a2 2 0 012 2v6a2 2 0 01-2 2h-2" strokeLinecap="round" strokeLinejoin="round"/>
+        <circle cx="7.5" cy="17" r="1.5"/>
+        <circle cx="16.5" cy="17" r="1.5"/>
+      </>
+    },
+    {
+      id:'account', l:'Account',
+      icon:<>
+        {/* Person with circle */}
+        <circle cx="12" cy="8" r="3.5"/>
+        <path d="M5 20c0-3.5 3.1-6 7-6s7 2.5 7 6" strokeLinecap="round"/>
+      </>
+    },
   ]
 
   return (
     <div style={g.screen}>
       <style>{`
         * { -webkit-tap-highlight-color:transparent; box-sizing:border-box; font-family:'Inter',system-ui,sans-serif; }
-        body { background:#0D0D14; margin:0; overscroll-behavior:none; }
+        html, body { height:100%; background:#0D0D14; margin:0; overscroll-behavior:none; }
         @keyframes spin { to { transform:rotate(360deg) } }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
         @keyframes slideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
@@ -786,7 +810,8 @@ export default function DriverApp() {
         .action-btn:active { transform:scale(.96); opacity:.8; }
       `}</style>
 
-      <div style={{ flex:1, overflowY:'auto', paddingBottom:TAB_H, WebkitOverflowScrolling:'touch' }}>
+      {/* Scrollable content — flex:1 fills all space above the tab bar */}
+      <div style={{ flex:1, overflowY:'auto', overflowX:'hidden', WebkitOverflowScrolling:'touch', minHeight:0 }}>
         {tab === 'home' && (
           <div style={{ animation:'slideUp .35s ease-out' }}>
             <HomeTab
@@ -806,8 +831,8 @@ export default function DriverApp() {
         )}
       </div>
 
-      {/* ── Tab bar ─────── */}
-      <div style={{ position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)', width:'100%', maxWidth:430, background:'rgba(10,10,18,0.96)', backdropFilter:'blur(20px) saturate(180%)', WebkitBackdropFilter:'blur(20px)', borderTop:'1px solid rgba(255,255,255,.07)', display:'flex', paddingBottom:'env(safe-area-inset-bottom, 0px)', zIndex:1000 }}>
+      {/* ── Tab bar — plain flex child, always at bottom of 430px container */}
+      <div style={{ flexShrink:0, background:'rgba(10,10,18,0.97)', backdropFilter:'blur(20px) saturate(180%)', WebkitBackdropFilter:'blur(20px)', borderTop:'1px solid rgba(255,255,255,.07)', display:'flex', paddingBottom:'env(safe-area-inset-bottom, 0px)' }}>
         {TABS.map(t => (
           <div key={t.id} className="tab-item" onClick={() => setTab(t.id)} style={{ flex:1, padding:'12px 0 10px', display:'flex', flexDirection:'column', alignItems:'center', gap:4, cursor:'pointer', color:tab===t.id?'#F5B800':'rgba(255,255,255,.28)', position:'relative' }}>
             {tab === t.id && <div style={{ position:'absolute', top:0, left:'50%', transform:'translateX(-50%)', width:28, height:2, background:'#F5B800', borderRadius:'0 0 4px 4px' }}/>}
@@ -835,7 +860,7 @@ async function fetchTripDetails(id) {
 
 // ─── Styles ───────────────────────────────────────────────────
 const g = {
-  screen: { minHeight:'100dvh', background:'#0D0D14', color:'#fff', display:'flex', flexDirection:'column', maxWidth:430, margin:'0 auto' },
+  screen: { height:'100dvh', background:'#0D0D14', color:'#fff', display:'flex', flexDirection:'column', maxWidth:430, margin:'0 auto', overflow:'hidden' },
   loginBg: { position:'absolute', inset:0, zIndex:-1, background:'#0D0D14', overflow:'hidden' },
   bgCircle1: { position:'absolute', top:'-15%', left:'-25%', width:'80%', height:'55%', background:'radial-gradient(circle, rgba(245,184,0,0.08) 0%, transparent 70%)' },
   bgCircle2: { position:'absolute', bottom:'-10%', right:'-15%', width:'70%', height:'45%', background:'radial-gradient(circle, rgba(93,202,165,0.06) 0%, transparent 70%)' },
