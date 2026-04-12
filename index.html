@@ -312,6 +312,28 @@
   .zone-top { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-pri); font-weight: 500; margin-bottom: 5px; }
   .zone-val { font-weight: 700; }
 
+  /* —— TOGGLE SWITCH —— */
+  .toggle-wrap { display: flex; align-items: center; gap: 7px; }
+  .toggle { position: relative; width: 34px; height: 19px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .toggle-track {
+    position: absolute; inset: 0; border-radius: 20px;
+    background: var(--surface2); border: 1px solid var(--border2);
+    cursor: pointer; transition: background .2s, border-color .2s;
+  }
+  .toggle-track::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--text-ter); transition: transform .2s, background .2s;
+  }
+  .toggle input:checked + .toggle-track { background: rgba(93,202,165,.25); border-color: #5DCAA5; }
+  .toggle input:checked + .toggle-track::after { transform: translateX(15px); background: #5DCAA5; }
+  .toggle-lbl { font-size: 11px; font-weight: 600; color: var(--text-ter); min-width: 32px; }
+  .toggle input:checked ~ .toggle-lbl { color: #5DCAA5; }
+
+  /* —— LOC ICON —— */
+  .loc-icon { width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
   /* —— SCROLLBAR —— */
   * { scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
 
@@ -380,6 +402,14 @@
       <div class="nav-inner">
         <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="2,12 6,7 9,10 14,4"/></svg>
         <span>Analytics</span>
+      </div>
+    </div>
+
+    <div class="sb-section">Admin</div>
+    <div class="nav-item" onclick="go('staff', this)">
+      <div class="nav-inner">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5" cy="4" r="2"/><circle cx="11" cy="4" r="2"/><path d="M1 13c0-2.2 1.8-4 4-4"/><path d="M15 13c0-2.2-1.8-4-4-4"/><path d="M5 9c0-2.2 1.8-4 6-4"/><path d="M5 9c1.1-.6 2.2-1 3-1s1.9.4 3 1c1.2.7 2 2 2 4H3c0-2 .8-3.3 2-4z"/></svg>
+        <span>Staff</span>
       </div>
     </div>
 
@@ -568,15 +598,15 @@
               <div style="display:flex;align-items:center;gap:9px"><div class="av av-g">SR</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Sara Rizk</div><div style="font-size:11px;color:var(--text-ter)">+961 70 345 678</div></div></div>
               <span style="font-size:14px;font-weight:700">12</span><span class="badge b-green">Regular</span>
             </div>
-            <div class="table-row" style="grid-template-columns:1fr 55px 65px">
+            <div class="table-row" style="grid-template-columns:1fr 55px 65px" onclick="showCust('bassem')">
               <div style="display:flex;align-items:center;gap:9px"><div class="av av-r">BN</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Bassem Nader</div><div style="font-size:11px;color:var(--text-ter)">+961 76 456 789</div></div></div>
               <span style="font-size:14px;font-weight:700">2</span><span class="badge b-red">Blocked</span>
             </div>
-            <div class="table-row" style="grid-template-columns:1fr 55px 65px">
+            <div class="table-row" style="grid-template-columns:1fr 55px 65px" onclick="showCust('maya')">
               <div style="display:flex;align-items:center;gap:9px"><div class="av av-b">MH</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Maya Haddad</div><div style="font-size:11px;color:var(--text-ter)">+961 78 567 890</div></div></div>
               <span style="font-size:14px;font-weight:700">8</span><span class="badge b-green">Regular</span>
             </div>
-            <div class="table-row" style="grid-template-columns:1fr 55px 65px">
+            <div class="table-row" style="grid-template-columns:1fr 55px 65px" onclick="showCust('lara')">
               <div style="display:flex;align-items:center;gap:9px"><div class="av av-p">LF</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Lara Farah</div><div style="font-size:11px;color:var(--text-ter)">+961 79 678 901</div></div></div>
               <span style="font-size:14px;font-weight:700">21</span><span class="badge b-yellow">VIP</span>
             </div>
@@ -613,41 +643,51 @@
           <div class="metric"><div class="m-label">Offline</div><div class="m-val" style="color:var(--text-ter)">5</div></div>
         </div>
         <div class="table-wrap">
-          <div class="table-head" style="grid-template-columns:1fr 100px 90px 70px 80px">Driver<span>Car</span><span>Trips today</span><span>Rating</span><span>Status</span></div>
-          <div class="table-row" style="grid-template-columns:1fr 100px 90px 70px 80px">
-            <div style="display:flex;align-items:center;gap:9px"><div class="dot dot-g" style="margin-right:3px"></div><div class="av av-y">KM</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Karim Mansour</div><div style="font-size:11px;color:var(--text-ter)">123456 LB</div></div></div>
+          <div class="table-head" style="grid-template-columns:1fr 110px 90px 70px 90px 80px">Driver<span>Car</span><span>Trips today</span><span>Rating</span><span>Online</span><span>Status</span></div>
+
+          <div class="table-row" style="grid-template-columns:1fr 110px 90px 70px 90px 80px" id="drow-km">
+            <div style="display:flex;align-items:center;gap:9px"><div class="dot dot-g" id="ddot-km" style="margin-right:3px"></div><div class="av av-y">KM</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Karim Mansour</div><div style="font-size:11px;color:var(--text-ter)">123456 LB</div></div></div>
             <span style="font-size:12px;color:var(--text-sec)">Toyota Camry</span>
             <span style="font-size:15px;font-weight:800">7</span>
             <span style="font-size:13px;font-weight:700;color:var(--yellow)">4.9★</span>
-            <span class="badge b-green">Available</span>
+            <label class="toggle" onclick="event.stopPropagation()"><input type="checkbox" checked onchange="toggleDriver('km',this)"><span class="toggle-track"></span></label>
+            <span class="badge b-green" id="dstat-km">Available</span>
           </div>
-          <div class="table-row" style="grid-template-columns:1fr 100px 90px 70px 80px">
-            <div style="display:flex;align-items:center;gap:9px"><div class="dot dot-a" style="margin-right:3px"></div><div class="av av-b">FA</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Fadi Abi Nasr</div><div style="font-size:11px;color:var(--text-ter)">678901 LB</div></div></div>
+
+          <div class="table-row" style="grid-template-columns:1fr 110px 90px 70px 90px 80px" id="drow-fa">
+            <div style="display:flex;align-items:center;gap:9px"><div class="dot dot-a" id="ddot-fa" style="margin-right:3px"></div><div class="av av-b">FA</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Fadi Abi Nasr</div><div style="font-size:11px;color:var(--text-ter)">678901 LB</div></div></div>
             <span style="font-size:12px;color:var(--text-sec)">Honda Accord</span>
             <span style="font-size:15px;font-weight:800">5</span>
             <span style="font-size:13px;font-weight:700;color:var(--yellow)">4.7★</span>
-            <span class="badge b-amber">On trip</span>
+            <label class="toggle" onclick="event.stopPropagation()"><input type="checkbox" checked onchange="toggleDriver('fa',this)"><span class="toggle-track"></span></label>
+            <span class="badge b-amber" id="dstat-fa">On trip</span>
           </div>
-          <div class="table-row" style="grid-template-columns:1fr 100px 90px 70px 80px">
-            <div style="display:flex;align-items:center;gap:9px"><div class="dot dot-g" style="margin-right:3px"></div><div class="av av-g">CK</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Charbel Khoury</div><div style="font-size:11px;color:var(--text-ter)">234567 LB</div></div></div>
+
+          <div class="table-row" style="grid-template-columns:1fr 110px 90px 70px 90px 80px" id="drow-ck">
+            <div style="display:flex;align-items:center;gap:9px"><div class="dot dot-g" id="ddot-ck" style="margin-right:3px"></div><div class="av av-g">CK</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Charbel Khoury</div><div style="font-size:11px;color:var(--text-ter)">234567 LB</div></div></div>
             <span style="font-size:12px;color:var(--text-sec)">Kia Sportage</span>
             <span style="font-size:15px;font-weight:800">9</span>
             <span style="font-size:13px;font-weight:700;color:var(--yellow)">4.8★</span>
-            <span class="badge b-green">Available</span>
+            <label class="toggle" onclick="event.stopPropagation()"><input type="checkbox" checked onchange="toggleDriver('ck',this)"><span class="toggle-track"></span></label>
+            <span class="badge b-green" id="dstat-ck">Available</span>
           </div>
-          <div class="table-row" style="grid-template-columns:1fr 100px 90px 70px 80px">
-            <div style="display:flex;align-items:center;gap:9px"><div class="dot dot-x" style="margin-right:3px"></div><div class="av av-x">TG</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Tony Gemayel</div><div style="font-size:11px;color:var(--text-ter)">345678 LB</div></div></div>
+
+          <div class="table-row" style="grid-template-columns:1fr 110px 90px 70px 90px 80px" id="drow-tg">
+            <div style="display:flex;align-items:center;gap:9px"><div class="dot dot-x" id="ddot-tg" style="margin-right:3px"></div><div class="av av-x">TG</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Tony Gemayel</div><div style="font-size:11px;color:var(--text-ter)">345678 LB</div></div></div>
             <span style="font-size:12px;color:var(--text-sec)">Hyundai Elantra</span>
             <span style="font-size:15px;font-weight:800">3</span>
             <span style="font-size:13px;font-weight:700;color:var(--yellow)">4.5★</span>
-            <span class="badge b-gray">Offline</span>
+            <label class="toggle" onclick="event.stopPropagation()"><input type="checkbox" onchange="toggleDriver('tg',this)"><span class="toggle-track"></span></label>
+            <span class="badge b-gray" id="dstat-tg">Offline</span>
           </div>
-          <div class="table-row" style="grid-template-columns:1fr 100px 90px 70px 80px">
-            <div style="display:flex;align-items:center;gap:9px"><div class="dot dot-a" style="margin-right:3px"></div><div class="av av-p">GH</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Georges Hanna</div><div style="font-size:11px;color:var(--text-ter)">456789 LB</div></div></div>
+
+          <div class="table-row" style="grid-template-columns:1fr 110px 90px 70px 90px 80px" id="drow-gh">
+            <div style="display:flex;align-items:center;gap:9px"><div class="dot dot-a" id="ddot-gh" style="margin-right:3px"></div><div class="av av-p">GH</div><div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Georges Hanna</div><div style="font-size:11px;color:var(--text-ter)">456789 LB</div></div></div>
             <span style="font-size:12px;color:var(--text-sec)">Nissan Sentra</span>
             <span style="font-size:15px;font-weight:800">6</span>
             <span style="font-size:13px;font-weight:700;color:var(--yellow)">4.6★</span>
-            <span class="badge b-amber">On trip</span>
+            <label class="toggle" onclick="event.stopPropagation()"><input type="checkbox" checked onchange="toggleDriver('gh',this)"><span class="toggle-track"></span></label>
+            <span class="badge b-amber" id="dstat-gh">On trip</span>
           </div>
         </div>
       </div>
@@ -751,6 +791,220 @@
             <div class="chat-reply">
               <input placeholder="Reply as Wallway Taxi dispatcher...">
               <button class="btn btn-primary">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ——— STAFF ——— -->
+      <div id="p-staff" class="page">
+        <div class="metrics">
+          <div class="metric"><div class="m-label">Total staff</div><div class="m-val">11</div><div class="m-sub">across all roles</div></div>
+          <div class="metric"><div class="m-label">On shift now</div><div class="m-val m-up">6</div><div class="m-sub">of 8 scheduled</div></div>
+          <div class="metric"><div class="m-label">Open shifts</div><div class="m-val m-dn">2</div><div class="m-sub m-dn">need coverage</div></div>
+          <div class="metric"><div class="m-label">Avg performance</div><div class="m-val m-yellow">87%</div><div class="m-sub m-up">+4% vs last month</div></div>
+        </div>
+
+        <div class="grid-2" style="margin-bottom:14px">
+          <!-- Staff list -->
+          <div class="card">
+            <div class="card-head"><span class="card-title">Staff members</span><span class="card-meta">11 total</span></div>
+            <div class="table-head" style="grid-template-columns:1fr 90px 80px">Member<span>Role</span><span>Status</span></div>
+
+            <div class="table-row" style="grid-template-columns:1fr 90px 80px" onclick="showStaff('nour')">
+              <div style="display:flex;align-items:center;gap:9px">
+                <div class="av av-y">NJ</div>
+                <div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Nour Jamil</div><div style="font-size:11px;color:var(--text-ter)">+961 71 100 200</div></div>
+              </div>
+              <span class="badge b-blue">Dispatcher</span>
+              <span class="badge b-green">On shift</span>
+            </div>
+
+            <div class="table-row" style="grid-template-columns:1fr 90px 80px" onclick="showStaff('rami')">
+              <div style="display:flex;align-items:center;gap:9px">
+                <div class="av av-g">RK</div>
+                <div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Rami Karam</div><div style="font-size:11px;color:var(--text-ter)">+961 70 200 300</div></div>
+              </div>
+              <span class="badge b-blue">Dispatcher</span>
+              <span class="badge b-green">On shift</span>
+            </div>
+
+            <div class="table-row" style="grid-template-columns:1fr 90px 80px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <div class="av av-p">ZA</div>
+                <div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Ziad Abi Khalil</div><div style="font-size:11px;color:var(--text-ter)">+961 76 300 400</div></div>
+              </div>
+              <span class="badge b-yellow">Supervisor</span>
+              <span class="badge b-green">On shift</span>
+            </div>
+
+            <div class="table-row" style="grid-template-columns:1fr 90px 80px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <div class="av av-b">HM</div>
+                <div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Hiba Mrad</div><div style="font-size:11px;color:var(--text-ter)">+961 78 400 500</div></div>
+              </div>
+              <span class="badge b-green">Support</span>
+              <span class="badge b-amber">Break</span>
+            </div>
+
+            <div class="table-row" style="grid-template-columns:1fr 90px 80px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <div class="av av-r">PG</div>
+                <div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Pierre Gemayel</div><div style="font-size:11px;color:var(--text-ter)">+961 79 500 600</div></div>
+              </div>
+              <span class="badge b-blue">Dispatcher</span>
+              <span class="badge b-gray">Off shift</span>
+            </div>
+
+            <div class="table-row" style="grid-template-columns:1fr 90px 80px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <div class="av av-x">LN</div>
+                <div><div style="font-size:13px;font-weight:600;color:var(--text-pri)">Lynn Nassar</div><div style="font-size:11px;color:var(--text-ter)">+961 71 600 700</div></div>
+              </div>
+              <span class="badge b-green">Support</span>
+              <span class="badge b-gray">Off shift</span>
+            </div>
+          </div>
+
+          <!-- Staff detail panel -->
+          <div id="staff-detail">
+            <div class="profile-card">
+              <div class="profile-top">
+                <div class="av-lg av-y">NJ</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:16px;font-weight:800;color:var(--text-pri);margin-bottom:4px">Nour Jamil</div>
+                  <div style="margin-bottom:6px;display:flex;gap:6px;flex-wrap:wrap">
+                    <span class="badge b-blue">Dispatcher</span>
+                    <span class="badge b-green">On shift</span>
+                  </div>
+                  <div style="font-size:12px;color:var(--text-ter)">+961 71 100 200 · nour@wallwaytaxi.com</div>
+                </div>
+              </div>
+              <div class="profile-stats">
+                <div class="pstat"><div class="pstat-val">142</div><div class="pstat-lbl">Orders handled</div></div>
+                <div class="pstat"><div class="pstat-val">4.8</div><div class="pstat-lbl">Avg rating</div></div>
+                <div class="pstat" style="background:rgba(245,184,0,.1)"><div class="pstat-val m-yellow">94%</div><div class="pstat-lbl" style="color:var(--yellow-dark)">Performance</div></div>
+              </div>
+
+              <div class="section-label">Current shift</div>
+              <div style="background:var(--surface);border-radius:8px;padding:10px 12px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+                <div><div style="font-size:10px;color:var(--text-ter);margin-bottom:3px">CLOCK IN</div><div style="font-size:13px;font-weight:700">8:00 AM</div></div>
+                <div><div style="font-size:10px;color:var(--text-ter);margin-bottom:3px">CLOCK OUT</div><div style="font-size:13px;font-weight:700">4:00 PM</div></div>
+                <div><div style="font-size:10px;color:var(--text-ter);margin-bottom:3px">HOURS</div><div style="font-size:13px;font-weight:700;color:var(--yellow)">6h 14m</div></div>
+              </div>
+
+              <div class="section-label">Permissions</div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+                  <span style="font-size:13px;color:var(--text-sec)">Assign drivers</span>
+                  <span class="badge b-green">Allowed</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+                  <span style="font-size:13px;color:var(--text-sec)">Cancel orders</span>
+                  <span class="badge b-green">Allowed</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+                  <span style="font-size:13px;color:var(--text-sec)">Issue refunds</span>
+                  <span class="badge b-red">Restricted</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0">
+                  <span style="font-size:13px;color:var(--text-sec)">View financials</span>
+                  <span class="badge b-red">Restricted</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Shift schedule -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><span class="card-title">Today's shift schedule</span><span class="card-meta">Sun 12 Apr</span></div>
+          <div class="table-head" style="grid-template-columns:1fr 90px 100px 100px 80px 80px">Staff member<span>Role</span><span>Clock in</span><span>Clock out</span><span>Hours</span><span>Status</span></div>
+
+          <div class="table-row" style="grid-template-columns:1fr 90px 100px 100px 80px 80px">
+            <div style="display:flex;align-items:center;gap:8px"><div class="av av-sm av-y">NJ</div><span style="font-size:13px;font-weight:600">Nour Jamil</span></div>
+            <span class="badge b-blue">Dispatcher</span>
+            <span style="font-size:12px;color:var(--text-sec)">8:00 AM</span>
+            <span style="font-size:12px;color:var(--text-sec)">4:00 PM</span>
+            <span style="font-size:13px;font-weight:700;color:var(--yellow)">6h 14m</span>
+            <span class="badge b-green">Active</span>
+          </div>
+          <div class="table-row" style="grid-template-columns:1fr 90px 100px 100px 80px 80px">
+            <div style="display:flex;align-items:center;gap:8px"><div class="av av-sm av-g">RK</div><span style="font-size:13px;font-weight:600">Rami Karam</span></div>
+            <span class="badge b-blue">Dispatcher</span>
+            <span style="font-size:12px;color:var(--text-sec)">9:00 AM</span>
+            <span style="font-size:12px;color:var(--text-sec)">5:00 PM</span>
+            <span style="font-size:13px;font-weight:700;color:var(--yellow)">5h 14m</span>
+            <span class="badge b-green">Active</span>
+          </div>
+          <div class="table-row" style="grid-template-columns:1fr 90px 100px 100px 80px 80px">
+            <div style="display:flex;align-items:center;gap:8px"><div class="av av-sm av-p">ZA</div><span style="font-size:13px;font-weight:600">Ziad Abi Khalil</span></div>
+            <span class="badge b-yellow">Supervisor</span>
+            <span style="font-size:12px;color:var(--text-sec)">7:00 AM</span>
+            <span style="font-size:12px;color:var(--text-sec)">3:00 PM</span>
+            <span style="font-size:13px;font-weight:700;color:var(--yellow)">7h 14m</span>
+            <span class="badge b-green">Active</span>
+          </div>
+          <div class="table-row" style="grid-template-columns:1fr 90px 100px 100px 80px 80px">
+            <div style="display:flex;align-items:center;gap:8px"><div class="av av-sm av-b">HM</div><span style="font-size:13px;font-weight:600">Hiba Mrad</span></div>
+            <span class="badge b-green">Support</span>
+            <span style="font-size:12px;color:var(--text-sec)">10:00 AM</span>
+            <span style="font-size:12px;color:var(--text-sec)">6:00 PM</span>
+            <span style="font-size:13px;font-weight:700;color:var(--text-ter)">4h 14m</span>
+            <span class="badge b-amber">On break</span>
+          </div>
+          <div class="table-row" style="grid-template-columns:1fr 90px 100px 100px 80px 80px">
+            <div style="display:flex;align-items:center;gap:8px"><div class="av av-sm av-r">PG</div><span style="font-size:13px;font-weight:600">Pierre Gemayel</span></div>
+            <span class="badge b-blue">Dispatcher</span>
+            <span style="font-size:12px;color:var(--text-ter)">2:00 PM</span>
+            <span style="font-size:12px;color:var(--text-ter)">10:00 PM</span>
+            <span style="font-size:13px;font-weight:700;color:var(--text-ter)">—</span>
+            <span class="badge b-gray">Upcoming</span>
+          </div>
+          <div class="table-row" style="grid-template-columns:1fr 90px 100px 100px 80px 80px">
+            <div style="display:flex;align-items:center;gap:8px"><div class="av av-sm av-x">—</div><span style="font-size:13px;font-weight:600;color:var(--text-ter)">Unassigned</span></div>
+            <span class="badge b-blue">Dispatcher</span>
+            <span style="font-size:12px;color:var(--text-ter)">6:00 PM</span>
+            <span style="font-size:12px;color:var(--text-ter)">12:00 AM</span>
+            <span style="font-size:13px;font-weight:700;color:var(--text-ter)">—</span>
+            <span class="badge b-red">No cover</span>
+          </div>
+        </div>
+
+        <!-- Performance + Activity log -->
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-head"><span class="card-title">Performance this month</span></div>
+            <div style="padding:14px 16px">
+              <div class="zone-row"><div class="zone-top"><span>Nour Jamil</span><span class="zone-val" style="color:#5DCAA5">94%</span></div><div class="prog-bar"><div class="prog-fill" style="width:94%"></div></div></div>
+              <div class="zone-row"><div class="zone-top"><span>Ziad Abi Khalil</span><span class="zone-val" style="color:#5DCAA5">91%</span></div><div class="prog-bar"><div class="prog-fill" style="width:91%"></div></div></div>
+              <div class="zone-row"><div class="zone-top"><span>Rami Karam</span><span class="zone-val">88%</span></div><div class="prog-bar"><div class="prog-fill" style="width:88%"></div></div></div>
+              <div class="zone-row"><div class="zone-top"><span>Hiba Mrad</span><span class="zone-val">82%</span></div><div class="prog-bar"><div class="prog-fill" style="width:82%;background:rgba(245,184,0,.4)"></div></div></div>
+              <div class="zone-row"><div class="zone-top"><span>Pierre Gemayel</span><span class="zone-val" style="color:#F09595">74%</span></div><div class="prog-bar"><div class="prog-fill" style="width:74%;background:rgba(240,149,149,.5)"></div></div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><span class="card-title">Recent activity log</span><span class="card-meta">Today</span></div>
+            <div class="row">
+              <div class="av av-sm av-y">NJ</div>
+              <div class="row-info"><div class="row-name">Nour assigned driver to #1291</div><div class="row-sub">Karim Mansour → Ahmad Khalil · 2:13 PM</div></div>
+            </div>
+            <div class="row">
+              <div class="av av-sm av-g">RK</div>
+              <div class="row-info"><div class="row-name">Rami cancelled order #1286</div><div class="row-sub">Customer request · 1:09 PM</div></div>
+            </div>
+            <div class="row">
+              <div class="av av-sm av-p">ZA</div>
+              <div class="row-info"><div class="row-name">Ziad updated promo WKND20</div><div class="row-sub">Extended expiry by 7 days · 11:45 AM</div></div>
+            </div>
+            <div class="row">
+              <div class="av av-sm av-b">HM</div>
+              <div class="row-info"><div class="row-name">Hiba replied to Sara Rizk</div><div class="row-sub">WhatsApp escalation resolved · 10:22 AM</div></div>
+            </div>
+            <div class="row">
+              <div class="av av-sm av-y">NJ</div>
+              <div class="row-info"><div class="row-name">Nour clocked in</div><div class="row-sub">8:00 AM · on time</div></div>
             </div>
           </div>
         </div>
@@ -1062,8 +1316,8 @@
 </div>
 
 <script>
-const pages = { dash:'Dashboard', orders:'Orders', customers:'Customers', drivers:'Drivers', analytics:'Analytics', chats:'WhatsApp chats', marketing:'Marketing', loyalty:'Loyalty' };
-const actions = { dash:'+ New order', orders:'Export CSV', customers:'+ Add customer', drivers:'+ Add driver', analytics:'Export report', chats:'Mark all read', marketing:'+ New campaign', loyalty:'+ Add reward' };
+const pages = { dash:'Dashboard', orders:'Orders', customers:'Customers', drivers:'Drivers', analytics:'Analytics', chats:'WhatsApp chats', staff:'Staff', marketing:'Marketing', loyalty:'Loyalty' };
+const actions = { dash:'+ New order', orders:'Export CSV', customers:'+ Add customer', drivers:'+ Add driver', analytics:'Export report', chats:'Mark all read', staff:'+ Add staff', marketing:'+ New campaign', loyalty:'+ Add reward' };
 
 function go(id, el) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1080,10 +1334,69 @@ function topAction() {
   alert('This is a UI demo. Connect to Supabase to make this live!');
 }
 
+const LOC_ICONS = {
+  'Home':    { bg:'rgba(93,202,165,.15)',  color:'#5DCAA5', svg:'<path d="M2 8.5L8 2l6 6.5"/><path d="M4 7v6h3v-3h2v3h3V7"/>' },
+  'Work':    { bg:'rgba(85,138,221,.15)',  color:'#85B7EB', svg:'<rect x="2" y="6" width="12" height="8" rx="1"/><path d="M5 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/><line x1="8" y1="10" x2="8" y2="10"/>' },
+  'Gym':     { bg:'rgba(245,184,0,.15)',   color:'#F5B800', svg:'<circle cx="4" cy="8" r="1.5"/><circle cx="12" cy="8" r="1.5"/><line x1="5.5" y1="8" x2="10.5" y2="8" stroke-width="2.5"/>' },
+  'Airport': { bg:'rgba(175,169,236,.15)', color:'#AFA9EC', svg:'<path d="M2 11l2-6 4 2 4-4 1 1-3 5 2 1-1 2-3-2-1 3-2-1 1-3z"/>' },
+  'School':  { bg:'rgba(239,159,39,.15)',  color:'#EF9F27', svg:'<rect x="2" y="6" width="12" height="8" rx="1"/><path d="M5 6V5a3 3 0 016 0v1"/><line x1="8" y1="9" x2="8" y2="11"/>' },
+  'Hospital':{ bg:'rgba(240,149,149,.15)', color:'#F09595', svg:'<rect x="2" y="2" width="12" height="12" rx="1.5"/><line x1="8" y1="5" x2="8" y2="11"/><line x1="5" y1="8" x2="11" y2="8"/>' },
+  'default': { bg:'var(--surface2)',       color:'var(--text-ter)', svg:'<circle cx="8" cy="7" r="3"/><path d="M8 14s-5-4.5-5-7a5 5 0 0110 0c0 2.5-5 7-5 7z"/>' }
+};
+function locIcon(name) {
+  const ic = LOC_ICONS[name] || LOC_ICONS['default'];
+  return `<div class="loc-icon" style="background:${ic.bg}"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="${ic.color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ic.svg}</svg></div>`;
+}
+
 function showCust(id) {
   const data = {
-    ahmad: { init:'AK', cls:'av-y', name:'Ahmad Khalil', phone:'+961 71 234 567', badge:'b-yellow', badgeText:'VIP customer', trips:'34', spend:'$284', rating:'4.9', locs:[['Home','Hamra St., near Bliss, Beirut','12','b-yellow'],['Work','Verdun 732, 3rd floor','8','b-green'],['Gym','Fitness First, Kaslik','3','b-gray']] },
-    sara:  { init:'SR', cls:'av-g', name:'Sara Rizk', phone:'+961 70 345 678', badge:'b-green', badgeText:'Regular', trips:'12', spend:'$98', rating:'4.6', locs:[['Achrafieh','Mar Nicolas St., Achrafieh','7','b-blue'],['Work','Saifi Village, Downtown','4','b-green']] }
+    ahmad: {
+      init:'AK', cls:'av-y', name:'Ahmad Khalil', phone:'+961 71 234 567', lang:'Arabic',
+      badge:'b-yellow', badgeText:'VIP customer', trips:'34', spend:'$284', rating:'4.9',
+      locs:[
+        ['Home',    'Hamra St., near Bliss, Beirut', '12', 'b-yellow'],
+        ['Work',    'Verdun 732, 3rd floor',          '8',  'b-green'],
+        ['Gym',     'Fitness First, Kaslik',           '3',  'b-gray'],
+        ['Airport', 'Beirut–Rafic Hariri Intl',        '6',  'b-blue']
+      ]
+    },
+    sara: {
+      init:'SR', cls:'av-g', name:'Sara Rizk', phone:'+961 70 345 678', lang:'English',
+      badge:'b-green', badgeText:'Regular', trips:'12', spend:'$98', rating:'4.6',
+      locs:[
+        ['Home',    'Mar Nicolas St., Achrafieh',      '7',  'b-green'],
+        ['Work',    'Saifi Village, Downtown',          '4',  'b-blue'],
+        ['Airport', 'Beirut–Rafic Hariri Intl',        '2',  'b-gray']
+      ]
+    },
+    bassem: {
+      init:'BN', cls:'av-r', name:'Bassem Nader', phone:'+961 76 456 789', lang:'Arabic',
+      badge:'b-red', badgeText:'Blocked', trips:'2', spend:'$14', rating:'2.1',
+      locs:[
+        ['Home',    'Dora Highway, Beirut',             '2',  'b-red']
+      ]
+    },
+    maya: {
+      init:'MH', cls:'av-b', name:'Maya Haddad', phone:'+961 78 567 890', lang:'French',
+      badge:'b-green', badgeText:'Regular', trips:'8', spend:'$67', rating:'4.7',
+      locs:[
+        ['Home',    'Raouche, Beirut',                  '5',  'b-green'],
+        ['Work',    'ABC Mall, Ashrafieh',               '3',  'b-blue'],
+        ['School',  'AUB Campus, Bliss St.',             '2',  'b-amber'],
+        ['Gym',     'Gold\'s Gym, Dbayeh',               '1',  'b-gray']
+      ]
+    },
+    lara: {
+      init:'LF', cls:'av-p', name:'Lara Farah', phone:'+961 79 678 901', lang:'English',
+      badge:'b-yellow', badgeText:'VIP customer', trips:'21', spend:'$187', rating:'4.8',
+      locs:[
+        ['Home',     'Zalka Highway, Block A',           '9',  'b-yellow'],
+        ['Work',     'Gemmayzeh, Mar Mikhael',            '7',  'b-blue'],
+        ['Gym',      'Fitness Zone, Jal el Dib',          '4',  'b-green'],
+        ['Hospital', 'Hotel-Dieu de France, Ashrafieh',   '2',  'b-red'],
+        ['Airport',  'Beirut–Rafic Hariri Intl',          '3',  'b-gray']
+      ]
+    }
   };
   const d = data[id]; if (!d) return;
   document.getElementById('cust-detail').innerHTML = `
@@ -1093,7 +1406,7 @@ function showCust(id) {
         <div>
           <div style="font-size:16px;font-weight:800;color:var(--text-pri);margin-bottom:4px">${d.name}</div>
           <div style="margin-bottom:6px"><span class="badge ${d.badge}">${d.badgeText}</span></div>
-          <div style="font-size:12px;color:var(--text-ter)">${d.phone}</div>
+          <div style="font-size:12px;color:var(--text-ter)">${d.phone} · ${d.lang}</div>
         </div>
       </div>
       <div class="profile-stats">
@@ -1101,9 +1414,84 @@ function showCust(id) {
         <div class="pstat"><div class="pstat-val">${d.spend}</div><div class="pstat-lbl">Total spend</div></div>
         <div class="pstat" style="background:rgba(245,184,0,.1)"><div class="pstat-val m-yellow">${d.rating}</div><div class="pstat-lbl" style="color:#7A5C00">Avg rating</div></div>
       </div>
-      <div class="section-label">Saved locations</div>
-      ${d.locs.map(l => `<div class="loc-row"><div><div class="loc-name">${l[0]}</div><div class="loc-addr">${l[1]}</div></div><span class="badge ${l[3]}">${l[2]} uses</span></div>`).join('')}
+      <div class="section-label">Saved locations (${d.locs.length})</div>
+      ${d.locs.map(l => `
+        <div class="loc-row">
+          <div style="display:flex;align-items:center;gap:10px">
+            ${locIcon(l[0])}
+            <div><div class="loc-name">${l[0]}</div><div class="loc-addr">${l[1]}</div></div>
+          </div>
+          <span class="badge ${l[3]}">${l[2]} uses</span>
+        </div>`).join('')}
     </div>`;
+}
+
+function showStaff(id) {
+  const data = {
+    nour: {
+      init:'NJ', cls:'av-y', name:'Nour Jamil', contact:'+961 71 100 200 · nour@wallwaytaxi.com',
+      roleBadge:'b-blue', role:'Dispatcher', statusBadge:'b-green', status:'On shift',
+      orders:'142', rating:'4.8', perf:'94%',
+      clockIn:'8:00 AM', clockOut:'4:00 PM', hours:'6h 14m',
+      perms:[['Assign drivers','b-green','Allowed'],['Cancel orders','b-green','Allowed'],['Issue refunds','b-red','Restricted'],['View financials','b-red','Restricted']]
+    },
+    rami: {
+      init:'RK', cls:'av-g', name:'Rami Karam', contact:'+961 70 200 300 · rami@wallwaytaxi.com',
+      roleBadge:'b-blue', role:'Dispatcher', statusBadge:'b-green', status:'On shift',
+      orders:'98', rating:'4.6', perf:'88%',
+      clockIn:'9:00 AM', clockOut:'5:00 PM', hours:'5h 14m',
+      perms:[['Assign drivers','b-green','Allowed'],['Cancel orders','b-green','Allowed'],['Issue refunds','b-red','Restricted'],['View financials','b-red','Restricted']]
+    }
+  };
+  const d = data[id]; if (!d) return;
+  document.getElementById('staff-detail').innerHTML = `
+    <div class="profile-card">
+      <div class="profile-top">
+        <div class="av-lg ${d.cls}">${d.init}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:16px;font-weight:800;color:var(--text-pri);margin-bottom:4px">${d.name}</div>
+          <div style="margin-bottom:6px;display:flex;gap:6px;flex-wrap:wrap"><span class="badge ${d.roleBadge}">${d.role}</span><span class="badge ${d.statusBadge}">${d.status}</span></div>
+          <div style="font-size:12px;color:var(--text-ter)">${d.contact}</div>
+        </div>
+      </div>
+      <div class="profile-stats">
+        <div class="pstat"><div class="pstat-val">${d.orders}</div><div class="pstat-lbl">Orders handled</div></div>
+        <div class="pstat"><div class="pstat-val">${d.rating}</div><div class="pstat-lbl">Avg rating</div></div>
+        <div class="pstat" style="background:rgba(245,184,0,.1)"><div class="pstat-val m-yellow">${d.perf}</div><div class="pstat-lbl" style="color:#7A5C00">Performance</div></div>
+      </div>
+      <div class="section-label">Current shift</div>
+      <div style="background:var(--surface);border-radius:8px;padding:10px 12px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div><div style="font-size:10px;color:var(--text-ter);margin-bottom:3px">CLOCK IN</div><div style="font-size:13px;font-weight:700">${d.clockIn}</div></div>
+        <div><div style="font-size:10px;color:var(--text-ter);margin-bottom:3px">CLOCK OUT</div><div style="font-size:13px;font-weight:700">${d.clockOut}</div></div>
+        <div><div style="font-size:10px;color:var(--text-ter);margin-bottom:3px">HOURS</div><div style="font-size:13px;font-weight:700;color:var(--yellow)">${d.hours}</div></div>
+      </div>
+      <div class="section-label">Permissions</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${d.perms.map((p,i) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;${i<d.perms.length-1?'border-bottom:1px solid var(--border)':''}"><span style="font-size:13px;color:var(--text-sec)">${p[0]}</span><span class="badge ${p[1]}">${p[2]}</span></div>`).join('')}
+      </div>
+    </div>`;
+}
+
+function toggleDriver(id, cb) {
+  const online = cb.checked;
+  const dot  = document.getElementById('ddot-' + id);
+  const stat = document.getElementById('dstat-' + id);
+  if (!dot || !stat) return;
+  // Drivers on a trip can't be toggled offline mid-trip
+  if (!online && stat.textContent === 'On trip') {
+    cb.checked = true;
+    alert('This driver is currently on a trip and cannot be set offline.');
+    return;
+  }
+  if (online) {
+    dot.className  = 'dot dot-g';
+    stat.className = 'badge b-green';
+    stat.textContent = 'Available';
+  } else {
+    dot.className  = 'dot dot-x';
+    stat.className = 'badge b-gray';
+    stat.textContent = 'Offline';
+  }
 }
 
 function updateTime() {
