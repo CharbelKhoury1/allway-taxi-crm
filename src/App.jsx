@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { supabase } from './lib/supabase'
+import Login     from './pages/Login'
 import Dashboard  from './pages/Dashboard'
 import Orders     from './pages/Orders'
 import Customers  from './pages/Customers'
@@ -74,19 +76,70 @@ function useLiveTime() {
 }
 
 export default function App() {
-  const [page, setPage] = useState('dash')
+  // null = loading, false = logged out, object = logged in user
+  const [user, setUser]   = useState(null)
+  const [authReady, setAuthReady] = useState(false)
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
+  const [page, setPage]   = useState(() => localStorage.getItem('currentPage') || 'dash')
   const time = useLiveTime()
 
+  // Bootstrap: restore existing session, then listen for auth changes
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? false)
+      setAuthReady(true)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? false)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Persist theme and apply to root element
+  useEffect(() => {
+    localStorage.setItem('theme', theme)
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
+
+  // Persist current page
+  useEffect(() => {
+    localStorage.setItem('currentPage', page)
+  }, [page])
+
+  // Remove the no-transitions class after the first paint
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      document.documentElement.classList.remove('no-transitions')
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setPage('dash')
+  }
+
+  // Still resolving session — show nothing to avoid flash
+  if (!authReady) return null
+
+  if (!user) {
+    return <Login onLogin={setUser} />
+  }
+
   const PageComponent = PAGES[page]
+
+  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark')
 
   return (
     <div className="app">
       {/* SIDEBAR */}
       <div className="sidebar">
         <div className="sb-brand">
-          <div className="sb-logo">W</div>
+          <div className="sb-logo">A</div>
           <div className="sb-brand-text">
-            <div className="sb-brand-name">WALLWAY <span>TAXI</span></div>
+            <div className="sb-brand-name">ALLWAY <span>TAXI</span></div>
             <div className="sb-brand-sub">Operations CRM</div>
           </div>
         </div>
@@ -110,7 +163,7 @@ export default function App() {
           <div className="sb-av">D</div>
           <div>
             <div className="sb-uname">Dispatcher</div>
-            <div className="sb-urole">wallwaytaxi.com</div>
+            <div className="sb-urole">allwaytaxi.com</div>
           </div>
         </div>
       </div>
@@ -124,16 +177,37 @@ export default function App() {
           </div>
           <div className="tb-right">
             <div className="tb-time">{time}</div>
+            
+            <button 
+              className="btn" 
+              onClick={toggleTheme}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px' }}
+            >
+              {theme === 'dark' ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              )}
+            </button>
+
             <button className="btn btn-primary" onClick={() => alert('Connect to Supabase to make this live!')}>
               {PAGE_ACTIONS[page]}
             </button>
+            <button className="btn" style={{ marginLeft: 8 }} onClick={handleLogout}>Logout</button>
           </div>
         </div>
 
         <div className="content">
-          <PageComponent onNavigate={setPage} />
+          <div key={page} className="anim-fade">
+            <PageComponent onNavigate={setPage} />
+          </div>
         </div>
       </div>
     </div>
   )
 }
+
+
+
+

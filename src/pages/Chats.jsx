@@ -19,36 +19,36 @@ const HEADS = {
 const INIT_MESSAGES = {
   sara: [
     { dir:'in',  text:'I need a taxi from Achrafieh to the Airport please',                                          time:'1:38 PM'             },
-    { dir:'out', text:'Hello Sara! Happy to help. What time do you need the pickup?',                                 time:'1:38 PM · Wallway AI'},
+    { dir:'out', text:'Hello Sara! Happy to help. What time do you need the pickup?',                                 time:'1:38 PM · Allway AI'},
     { dir:'in',  text:"Right now, it's urgent",                                                                      time:'1:39 PM'             },
-    { dir:'out', text:'Confirmed! Booking created — Achrafieh to Airport, now. A driver will be assigned shortly.',  time:'1:39 PM · Wallway AI'},
+    { dir:'out', text:'Confirmed! Booking created — Achrafieh to Airport, now. A driver will be assigned shortly.',  time:'1:39 PM · Allway AI'},
     { dir:'in',  text:"30 minutes and NO driver!! I'm going to miss my flight!!", urgentIn:true,                     time:'2:08 PM'             },
-    { dir:'out', text:'We sincerely apologise Sara. Connecting you with our dispatcher right now.', alertAmber:true, time:'2:08 PM · Wallway AI'},
+    { dir:'out', text:'We sincerely apologise Sara. Connecting you with our dispatcher right now.', alertAmber:true, time:'2:08 PM · Allway AI'},
   ],
   joe: [
     { dir:'in',  text:'السلام عليكم، أنا بانتظار التاكسي من ٢٠ دقيقة',                                           time:'1:35 PM'             },
-    { dir:'out', text:'أهلاً جو! نأسف للتأخير، السائق في الطريق إليك الآن.',                                      time:'1:36 PM · Wallway AI'},
+    { dir:'out', text:'أهلاً جو! نأسف للتأخير، السائق في الطريق إليك الآن.',                                      time:'1:36 PM · Allway AI'},
     { dir:'in',  text:'السائق كان وقح ومش محترم',                                                                  time:'1:50 PM'             },
-    { dir:'out', text:'نأسف جداً على هذه التجربة. سنتابع الموضوع مع الإدارة فوراً.',                              time:'1:51 PM · Wallway AI'},
+    { dir:'out', text:'نأسف جداً على هذه التجربة. سنتابع الموضوع مع الإدارة فوراً.',                              time:'1:51 PM · Allway AI'},
     { dir:'in',  text:'بدي agent، مش راضي عن السائق',                                                              time:'1:52 PM'             },
   ],
   ahmad: [
     { dir:'in',  text:'مرحبا، أريد حجز تاكسي من حمرا إلى فردان',                                                  time:'1:40 PM'             },
-    { dir:'out', text:'أهلاً أحمد! تم تأكيد الحجز. السائق كريم في طريقه إليك.',                                  time:'1:41 PM · Wallway AI'},
+    { dir:'out', text:'أهلاً أحمد! تم تأكيد الحجز. السائق كريم في طريقه إليك.',                                  time:'1:41 PM · Allway AI'},
     { dir:'in',  text:'شكراً، الشوفير وصل بالوقت',                                                                 time:'1:44 PM'             },
-    { dir:'out', text:'شكراً لك! نسعد دائماً بخدمتك.',                                                             time:'1:44 PM · Wallway AI'},
+    { dir:'out', text:'شكراً لك! نسعد دائماً بخدمتك.',                                                             time:'1:44 PM · Allway AI'},
   ],
   maya: [
     { dir:'in',  text:'Hi! Is it possible to schedule a ride in advance?',                                          time:'1:28 PM'             },
-    { dir:'out', text:'Hi Maya! Yes, absolutely. Just tell me the date, time and pickup location.',                  time:'1:29 PM · Wallway AI'},
+    { dir:'out', text:'Hi Maya! Yes, absolutely. Just tell me the date, time and pickup location.',                  time:'1:29 PM · Allway AI'},
     { dir:'in',  text:'Can I book for tomorrow morning at 8?',                                                      time:'1:31 PM'             },
-    { dir:'out', text:'Sure! From your saved Home (Raouche) to Work (ABC Mall)?',                                    time:'1:31 PM · Wallway AI'},
+    { dir:'out', text:'Sure! From your saved Home (Raouche) to Work (ABC Mall)?',                                    time:'1:31 PM · Allway AI'},
   ],
   lara: [
     { dir:'in',  text:'Hi, I need a ride from Zalka to Gemmayzeh please',                                           time:'12:50 PM'            },
-    { dir:'out', text:'Hi Lara! Booking confirmed. Driver Tony G. is on his way to Zalka Highway.',                  time:'12:51 PM · Wallway AI'},
+    { dir:'out', text:'Hi Lara! Booking confirmed. Driver Tony G. is on his way to Zalka Highway.',                  time:'12:51 PM · Allway AI'},
     { dir:'in',  text:'Booking confirmed, thank you!',                                                              time:'12:55 PM'            },
-    { dir:'out', text:"You're welcome Lara! Have a great day 🚕",                                                   time:'12:55 PM · Wallway AI'},
+    { dir:'out', text:"You're welcome Lara! Have a great day 🚕",                                                   time:'12:55 PM · Allway AI'},
   ],
 }
 
@@ -96,7 +96,7 @@ export default function Chats() {
   const attentionCount = CONVERSATIONS.filter(c => c.type === 'alert' || c.type === 'urgent').length
 
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'270px 1fr', gap:14, alignItems:'start' }}>
+    <div style={{ display:'grid', gridTemplateColumns:'300px 1fr', gap:20, alignItems:'start' }}>
 
       {/* Conversation list */}
       <div className="chat-list">
@@ -141,30 +141,36 @@ export default function Chats() {
 
       {/* Chat window */}
       <div className="chat-window">
-        <div className="chat-window-head">
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <div className={`av ${head.cls}`} style={{ width:34, height:34, fontSize:12 }}>{head.init}</div>
+        <div className="chat-window-head" style={{ padding: '16px 20px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <div className={`av ${head.cls}`} style={{ width:40, height:40, fontSize:14 }}>{head.init}</div>
             <div>
-              <div style={{ fontSize:13, fontWeight:700, color:'var(--text-pri)' }}>{head.name}</div>
-              <div style={{ fontSize:11, color:'var(--text-ter)' }}>{head.phone}</div>
+              <div style={{ fontSize:15, fontWeight:700, color:'var(--text-pri)' }}>{head.name}</div>
+              <div style={{ fontSize:12, color:'var(--text-ter)' }}>{head.phone}</div>
             </div>
           </div>
-          <span className={`badge ${head.badge}`}>{head.badgeText}</span>
+          <span className={`badge ${head.badge}`} style={{ padding: '4px 12px', fontSize: '11px' }}>{head.badgeText}</span>
         </div>
 
-        <div className="messages">
+        <div className="messages" style={{ gap: '14px', padding: '20px' }}>
           {msgs.map((m, i) => (
             <div
               key={i}
               className={`msg msg-${m.dir}${m.alertAmber ? ' alert-msg' : ''}`}
+              style={{ marginBottom: '4px' }}
             >
               <div
                 className="msg-bubble"
-                style={m.urgentIn ? { background:'rgba(224,75,74,.15)', color:'#F09595', borderRadius:'0 10px 10px 10px' } : {}}
+                style={{
+                  padding: '12px 16px',
+                  fontSize: '14px',
+                  lineHeight: '1.6',
+                  ...(m.urgentIn ? { background:'rgba(224,75,74,.15)', color:'#F09595', borderRadius:'0 10px 10px 10px' } : {})
+                }}
               >
                 {m.text}
               </div>
-              <div className="msg-time">{m.time}</div>
+              <div className="msg-time" style={{ marginTop: '6px', fontSize: '11px' }}>{m.time}</div>
             </div>
           ))}
           <div ref={messagesEndRef} />
@@ -172,7 +178,7 @@ export default function Chats() {
 
         <div className="chat-reply">
           <input
-            placeholder={`Reply to ${head.name} as Wallway Taxi dispatcher...`}
+            placeholder={`Reply to ${head.name} as Allway Taxi dispatcher...`}
             value={reply}
             onChange={e => setReply(e.target.value)}
             onKeyDown={handleKey}

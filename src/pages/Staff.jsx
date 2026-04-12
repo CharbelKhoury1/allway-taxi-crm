@@ -17,10 +17,10 @@ function StaffDetail({ id }) {
           <div style={{fontSize:12,color:'var(--text-ter)'}}>{d.contact}</div>
         </div>
       </div>
-      <div className="profile-stats">
-        <div className="pstat"><div className="pstat-val">{d.orders}</div><div className="pstat-lbl">Orders handled</div></div>
-        <div className="pstat"><div className="pstat-val">{d.rating}</div><div className="pstat-lbl">Avg rating</div></div>
-        <div className="pstat" style={{background:'rgba(245,184,0,.1)'}}>
+      <div className="profile-stats" style={{ gap: '12px', margin: '20px 0' }}>
+        <div className="pstat" style={{ padding: '14px' }}><div className="pstat-val">{d.orders}</div><div className="pstat-lbl">Orders handled</div></div>
+        <div className="pstat" style={{ padding: '14px' }}><div className="pstat-val">{d.rating}</div><div className="pstat-lbl">Avg rating</div></div>
+        <div className="pstat" style={{background:'rgba(245,184,0,.1)', padding: '14px'}}>
           <div className="pstat-val m-yellow">{d.perf}</div>
           <div className="pstat-lbl" style={{color:'#7A5C00'}}>Performance</div>
         </div>
@@ -126,20 +126,21 @@ export default function Staff() {
               className="table-row"
               style={{
                 gridTemplateColumns:'1fr 90px 80px',
+                padding: '16px 20px',
                 background: selected === s.id ? 'rgba(245,184,0,.08)' : undefined,
                 borderLeft: selected === s.id ? '3px solid var(--yellow)' : '3px solid transparent',
               }}
               onClick={() => setSelected(s.id)}
             >
-              <div style={{display:'flex',alignItems:'center',gap:9}}>
-                <div className={`av ${s.cls}`}>{s.init}</div>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                <div className={`av ${s.cls}`} style={{width:32,height:32,fontSize:11}}>{s.init}</div>
                 <div>
-                  <div style={{fontSize:13,fontWeight:600,color:'var(--text-pri)'}}>{s.name}</div>
-                  <div style={{fontSize:11,color:'var(--text-ter)'}}>{s.phone}</div>
+                  <div style={{fontSize:14,fontWeight:600,color:'var(--text-pri)'}}>{s.name}</div>
+                  <div style={{fontSize:12,color:'var(--text-ter)'}}>{s.phone}</div>
                 </div>
               </div>
-              <span className={`badge ${s.roleBadge}`}>{s.role}</span>
-              <span className={`badge ${s.statusBadge}`}>{s.status}</span>
+              <span className={`badge ${s.roleBadge}`} style={{padding:'4px 10px',fontSize:'10px'}}>{s.role}</span>
+              <span className={`badge ${s.statusBadge}`} style={{padding:'4px 10px',fontSize:'10px'}}>{s.status}</span>
             </div>
           ))}
         </div>

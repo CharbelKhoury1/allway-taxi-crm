@@ -10,7 +10,7 @@ export const STAFF_LIST = [
 export const STAFF_DETAIL = {
   nour: {
     init: 'NJ', cls: 'av-y', name: 'Nour Jamil',
-    contact: '+961 71 100 200 · nour@wallwaytaxi.com',
+    contact: '+961 71 100 200 · nour@allwaytaxi.com',
     roleBadge: 'b-blue', role: 'Dispatcher', statusBadge: 'b-green', status: 'On shift',
     orders: '142', rating: '4.8', perf: '94%',
     clockIn: '8:00 AM', clockOut: '4:00 PM', hours: '6h 14m',
@@ -18,7 +18,7 @@ export const STAFF_DETAIL = {
   },
   rami: {
     init: 'RK', cls: 'av-g', name: 'Rami Karam',
-    contact: '+961 70 200 300 · rami@wallwaytaxi.com',
+    contact: '+961 70 200 300 · rami@allwaytaxi.com',
     roleBadge: 'b-blue', role: 'Dispatcher', statusBadge: 'b-green', status: 'On shift',
     orders: '98', rating: '4.6', perf: '88%',
     clockIn: '9:00 AM', clockOut: '5:00 PM', hours: '5h 14m',
@@ -26,7 +26,7 @@ export const STAFF_DETAIL = {
   },
   ziad: {
     init: 'ZA', cls: 'av-p', name: 'Ziad Abi Khalil',
-    contact: '+961 76 300 400 · ziad@wallwaytaxi.com',
+    contact: '+961 76 300 400 · ziad@allwaytaxi.com',
     roleBadge: 'b-yellow', role: 'Supervisor', statusBadge: 'b-green', status: 'On shift',
     orders: '210', rating: '4.9', perf: '91%',
     clockIn: '7:00 AM', clockOut: '3:00 PM', hours: '7h 14m',
@@ -34,7 +34,7 @@ export const STAFF_DETAIL = {
   },
   hiba: {
     init: 'HM', cls: 'av-b', name: 'Hiba Mrad',
-    contact: '+961 78 400 500 · hiba@wallwaytaxi.com',
+    contact: '+961 78 400 500 · hiba@allwaytaxi.com',
     roleBadge: 'b-green', role: 'Support', statusBadge: 'b-amber', status: 'On break',
     orders: '76', rating: '4.5', perf: '82%',
     clockIn: '10:00 AM', clockOut: '6:00 PM', hours: '4h 14m',
@@ -42,7 +42,7 @@ export const STAFF_DETAIL = {
   },
   pierre: {
     init: 'PG', cls: 'av-r', name: 'Pierre Gemayel',
-    contact: '+961 79 500 600 · pierre@wallwaytaxi.com',
+    contact: '+961 79 500 600 · pierre@allwaytaxi.com',
     roleBadge: 'b-blue', role: 'Dispatcher', statusBadge: 'b-gray', status: 'Off shift',
     orders: '54', rating: '4.3', perf: '74%',
     clockIn: '2:00 PM', clockOut: '10:00 PM', hours: '—',
@@ -50,7 +50,7 @@ export const STAFF_DETAIL = {
   },
   lynn: {
     init: 'LN', cls: 'av-x', name: 'Lynn Nassar',
-    contact: '+961 71 600 700 · lynn@wallwaytaxi.com',
+    contact: '+961 71 600 700 · lynn@allwaytaxi.com',
     roleBadge: 'b-green', role: 'Support', statusBadge: 'b-gray', status: 'Off shift',
     orders: '38', rating: '4.4', perf: '79%',
     clockIn: '6:00 PM', clockOut: '12:00 AM', hours: '—',
