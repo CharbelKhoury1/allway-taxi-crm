@@ -45,12 +45,12 @@ function StaffDetail({ id }) {
 }
 
 const SCHEDULE = [
-  { init:'NJ', cls:'av-y', name:'Nour Jamil',      role:'Dispatcher', roleBadge:'b-blue',   clockIn:'8:00 AM',  clockOut:'4:00 PM',  hours:'6h 14m',  status:'Active',    badge:'b-green' },
-  { init:'RK', cls:'av-g', name:'Rami Karam',       role:'Dispatcher', roleBadge:'b-blue',   clockIn:'9:00 AM',  clockOut:'5:00 PM',  hours:'5h 14m',  status:'Active',    badge:'b-green' },
-  { init:'ZA', cls:'av-p', name:'Ziad Abi Khalil',  role:'Supervisor', roleBadge:'b-yellow', clockIn:'7:00 AM',  clockOut:'3:00 PM',  hours:'7h 14m',  status:'Active',    badge:'b-green' },
-  { init:'HM', cls:'av-b', name:'Hiba Mrad',        role:'Support',    roleBadge:'b-green',  clockIn:'10:00 AM', clockOut:'6:00 PM',  hours:'4h 14m',  status:'On break',  badge:'b-amber' },
-  { init:'PG', cls:'av-r', name:'Pierre Gemayel',   role:'Dispatcher', roleBadge:'b-blue',   clockIn:'2:00 PM',  clockOut:'10:00 PM', hours:'—',       status:'Upcoming',  badge:'b-gray' },
-  { init:'—',  cls:'av-x', name:'Unassigned',       role:'Dispatcher', roleBadge:'b-blue',   clockIn:'6:00 PM',  clockOut:'12:00 AM', hours:'—',       status:'No cover',  badge:'b-red' },
+  { init:'NJ', cls:'av-y', name:'Nour Jamil',      role:'Dispatcher', roleBadge:'b-blue',   clockIn:'8:00 AM',  clockOut:'4:00 PM',  hours:'6h 14m', status:'Active',   badge:'b-green' },
+  { init:'RK', cls:'av-g', name:'Rami Karam',       role:'Dispatcher', roleBadge:'b-blue',   clockIn:'9:00 AM',  clockOut:'5:00 PM',  hours:'5h 14m', status:'Active',   badge:'b-green' },
+  { init:'ZA', cls:'av-p', name:'Ziad Abi Khalil',  role:'Supervisor', roleBadge:'b-yellow', clockIn:'7:00 AM',  clockOut:'3:00 PM',  hours:'7h 14m', status:'Active',   badge:'b-green' },
+  { init:'HM', cls:'av-b', name:'Hiba Mrad',        role:'Support',    roleBadge:'b-green',  clockIn:'10:00 AM', clockOut:'6:00 PM',  hours:'4h 14m', status:'On break', badge:'b-amber' },
+  { init:'PG', cls:'av-r', name:'Pierre Gemayel',   role:'Dispatcher', roleBadge:'b-blue',   clockIn:'2:00 PM',  clockOut:'10:00 PM', hours:'—',      status:'Upcoming', badge:'b-gray'  },
+  { init:'—',  cls:'av-x', name:'Unassigned',       role:'Dispatcher', roleBadge:'b-blue',   clockIn:'6:00 PM',  clockOut:'12:00 AM', hours:'—',      status:'No cover', badge:'b-red'  },
 ]
 
 const PERF = [
@@ -73,6 +73,15 @@ const COL = '1fr 90px 100px 100px 80px 80px'
 
 export default function Staff() {
   const [selected, setSelected] = useState('nour')
+  const [search, setSearch]     = useState('')
+  const [roleFilter, setRoleFilter] = useState('All roles')
+
+  const filteredList = STAFF_LIST.filter(s => {
+    const q = search.toLowerCase()
+    const matchSearch = !q || s.name.toLowerCase().includes(q) || s.role.toLowerCase().includes(q)
+    const matchRole   = roleFilter === 'All roles' || s.role === roleFilter
+    return matchSearch && matchRole
+  })
 
   return (
     <div>
@@ -85,10 +94,43 @@ export default function Staff() {
 
       <div className="grid-2" style={{marginBottom:14}}>
         <div className="card">
-          <div className="card-head"><span className="card-title">Staff members</span><span className="card-meta">11 total</span></div>
+          <div className="card-head">
+            <span className="card-title">Staff members</span>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <select
+                value={roleFilter}
+                onChange={e => setRoleFilter(e.target.value)}
+                style={{fontSize:11,padding:'3px 8px',background:'var(--dark4)',border:'1px solid var(--border)',borderRadius:6,color:'var(--text-sec)',fontFamily:'var(--font)',outline:'none'}}
+              >
+                <option>All roles</option>
+                <option>Dispatcher</option>
+                <option>Supervisor</option>
+                <option>Support</option>
+              </select>
+            </div>
+          </div>
+          <div style={{padding:'8px 12px',borderBottom:'1px solid var(--border)'}}>
+            <input
+              placeholder="Search staff..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{width:'100%',padding:'6px 10px',fontSize:12,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:7,color:'var(--text-pri)',fontFamily:'var(--font)',outline:'none'}}
+            />
+          </div>
           <div className="table-head" style={{gridTemplateColumns:'1fr 90px 80px'}}>Member<span>Role</span><span>Status</span></div>
-          {STAFF_LIST.map(s => (
-            <div key={s.id} className="table-row" style={{gridTemplateColumns:'1fr 90px 80px'}} onClick={() => setSelected(s.id)}>
+          {filteredList.length === 0 ? (
+            <div style={{padding:'16px',textAlign:'center',fontSize:12,color:'var(--text-ter)'}}>No staff match your search.</div>
+          ) : filteredList.map(s => (
+            <div
+              key={s.id}
+              className="table-row"
+              style={{
+                gridTemplateColumns:'1fr 90px 80px',
+                background: selected === s.id ? 'rgba(245,184,0,.08)' : undefined,
+                borderLeft: selected === s.id ? '3px solid var(--yellow)' : '3px solid transparent',
+              }}
+              onClick={() => setSelected(s.id)}
+            >
               <div style={{display:'flex',alignItems:'center',gap:9}}>
                 <div className={`av ${s.cls}`}>{s.init}</div>
                 <div>

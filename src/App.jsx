@@ -61,12 +61,15 @@ const PAGE_ACTIONS = { dash:'+ New order', orders:'Export CSV', customers:'+ Add
 const PAGES = { dash:Dashboard, orders:Orders, customers:Customers, drivers:Drivers, analytics:Analytics, chats:Chats, staff:Staff, marketing:Marketing, loyalty:Loyalty }
 
 function useLiveTime() {
-  const fmt = () => {
+  function fmt() {
     const n = new Date()
     return n.toLocaleDateString('en-GB', {weekday:'short',day:'numeric',month:'short'}) + ' · ' + n.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'})
   }
-  const [time, setTime] = useState(fmt)
-  useEffect(() => { const id = setInterval(() => setTime(fmt), 30000); return () => clearInterval(id) }, [])
+  const [time, setTime] = useState(() => fmt())
+  useEffect(() => {
+    const id = setInterval(() => setTime(fmt()), 30000)
+    return () => clearInterval(id)
+  }, [])
   return time
 }
 

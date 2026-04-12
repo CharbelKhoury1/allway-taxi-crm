@@ -42,16 +42,16 @@ export default function Dashboard({ onNavigate }) {
         <div className="card">
           <div className="card-head">
             <span className="card-title">Active &amp; pending orders</span>
-            <span className="card-link" onClick={() => onNavigate('orders')}>View all</span>
+            <span className="card-link" onClick={() => onNavigate('orders')}>View all →</span>
           </div>
           {[
             { cls:'av-y', init:'AK', name:'Ahmad Khalil', route:'Hamra → Verdun',           badge:'b-amber', status:'Dispatching' },
-            { cls:'av-r', init:'SR', name:'Sara Rizk',    route:'Achrafieh → Airport',       badge:'b-red',   status:'No driver' },
-            { cls:'av-b', init:'MH', name:'Maya Haddad',  route:'Jounieh → Downtown',        badge:'b-blue',  status:'Assigned' },
-            { cls:'av-g', init:'JN', name:'Joe Nasr',     route:'Mar Mikhael → Dbayeh',      badge:'b-green', status:'In progress' },
-            { cls:'av-p', init:'LF', name:'Lara Farah',   route:'Zalka → Gemmayzeh',         badge:'b-green', status:'In progress' },
+            { cls:'av-r', init:'SR', name:'Sara Rizk',    route:'Achrafieh → Airport',       badge:'b-red',   status:'No driver'  },
+            { cls:'av-b', init:'MH', name:'Maya Haddad',  route:'Jounieh → Downtown',        badge:'b-blue',  status:'Assigned'   },
+            { cls:'av-g', init:'JN', name:'Joe Nasr',     route:'Mar Mikhael → Dbayeh',      badge:'b-green', status:'In progress'},
+            { cls:'av-p', init:'LF', name:'Lara Farah',   route:'Zalka → Gemmayzeh',         badge:'b-green', status:'In progress'},
           ].map(o => (
-            <div className="row" key={o.name}>
+            <div className="row" key={o.name} onClick={() => onNavigate('orders')}>
               <div className={`av ${o.cls}`}>{o.init}</div>
               <div className="row-info"><div className="row-name">{o.name}</div><div className="row-sub">{o.route}</div></div>
               <span className={`badge ${o.badge}`}>{o.status}</span>
@@ -62,15 +62,18 @@ export default function Dashboard({ onNavigate }) {
 
       <div className="grid-2">
         <div className="card">
-          <div className="card-head"><span className="card-title">Driver status</span><span className="card-meta">22 total</span></div>
+          <div className="card-head">
+            <span className="card-title">Driver status</span>
+            <span className="card-link" onClick={() => onNavigate('drivers')}>View all →</span>
+          </div>
           {[
             { dot:'dot-g', name:'Karim Mansour',  sub:'Toyota Camry · 4.9★',    badge:'b-green', status:'Available' },
-            { dot:'dot-a', name:'Fadi Abi Nasr',  sub:'Honda Accord · 4.7★',    badge:'b-amber', status:'On trip' },
+            { dot:'dot-a', name:'Fadi Abi Nasr',  sub:'Honda Accord · 4.7★',    badge:'b-amber', status:'On trip'   },
             { dot:'dot-g', name:'Charbel Khoury', sub:'Kia Sportage · 4.8★',    badge:'b-green', status:'Available' },
-            { dot:'dot-x', name:'Tony Gemayel',   sub:'Hyundai Elantra · 4.5★', badge:'b-gray',  status:'Offline' },
-            { dot:'dot-a', name:'Georges Hanna',  sub:'Nissan Sentra · 4.6★',   badge:'b-amber', status:'On trip' },
+            { dot:'dot-x', name:'Tony Gemayel',   sub:'Hyundai Elantra · 4.5★', badge:'b-gray',  status:'Offline'   },
+            { dot:'dot-a', name:'Georges Hanna',  sub:'Nissan Sentra · 4.6★',   badge:'b-amber', status:'On trip'   },
           ].map(d => (
-            <div className="row" key={d.name}>
+            <div className="row" key={d.name} onClick={() => onNavigate('drivers')}>
               <div className={`dot ${d.dot}`}></div>
               <div className="row-info"><div className="row-name">{d.name}</div><div className="row-sub">{d.sub}</div></div>
               <span className={`badge ${d.badge}`}>{d.status}</span>
