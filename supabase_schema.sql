@@ -307,7 +307,13 @@ CREATE POLICY "staff_all_promo_use"   ON promo_code_usage         FOR ALL TO aut
 CREATE POLICY "staff_all_loyalty"     ON loyalty_accounts         FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "staff_all_loyalty_tx"  ON loyalty_transactions     FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
--- Driver PWA (anon) — update own location + read assigned trip
+-- Driver PWA (anon) — login select + update own location + read assigned trip
+CREATE POLICY "driver_select_login" ON drivers
+  FOR SELECT TO anon USING (true);
+
+CREATE POLICY "driver_read_customers" ON customers
+  FOR SELECT TO anon USING (true);
+
 CREATE POLICY "driver_update_location" ON drivers
   FOR UPDATE TO anon USING (true) WITH CHECK (true);
 
