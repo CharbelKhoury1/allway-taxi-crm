@@ -768,28 +768,22 @@ export default function DriverApp() {
     {
       id:'home', l:'Home',
       icon:<>
-        {/* Speedometer / dashboard */}
-        <path d="M12 2a10 10 0 1 0 10 10" strokeLinecap="round"/>
-        <path d="M12 2A10 10 0 0 1 22 12" strokeLinecap="round" strokeDasharray="2 3"/>
-        <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
-        <line x1="12" y1="10" x2="16" y2="7" strokeLinecap="round"/>
+        <path d="M3 12L12 4l9 8" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M5 10v9a1 1 0 001 1h4v-4h4v4h4a1 1 0 001-1v-9" strokeLinecap="round" strokeLinejoin="round"/>
       </>
     },
     {
       id:'trips', l:'Trips',
       icon:<>
-        {/* Car side-view */}
-        <path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h1l3-3h8l3 3h1a2 2 0 012 2v6a2 2 0 01-2 2h-2" strokeLinecap="round" strokeLinejoin="round"/>
-        <circle cx="7.5" cy="17" r="1.5"/>
-        <circle cx="16.5" cy="17" r="1.5"/>
+        <circle cx="12" cy="12" r="9"/>
+        <polyline points="12 7 12 12 15.5 14" strokeLinecap="round" strokeLinejoin="round"/>
       </>
     },
     {
       id:'account', l:'Account',
       icon:<>
-        {/* Person with circle */}
-        <circle cx="12" cy="8" r="3.5"/>
-        <path d="M5 20c0-3.5 3.1-6 7-6s7 2.5 7 6" strokeLinecap="round"/>
+        <circle cx="12" cy="7.5" r="3.5"/>
+        <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" strokeLinecap="round"/>
       </>
     },
   ]
