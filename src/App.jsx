@@ -85,10 +85,16 @@ export default function App() {
 
   // Bootstrap: restore existing session, then listen for auth changes
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? false)
-      setAuthReady(true)
-    })
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setUser(session?.user ?? false)
+        setAuthReady(true)
+      })
+      .catch(() => {
+        // Supabase unreachable (e.g. missing env vars in deployment)
+        setUser(false)
+        setAuthReady(true)
+      })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? false)
@@ -121,8 +127,14 @@ export default function App() {
     setPage('dash')
   }
 
-  // Still resolving session — show nothing to avoid flash
-  if (!authReady) return null
+  // Still resolving session — show a branded spinner instead of blank screen
+  if (!authReady) return (
+    <div style={{ height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#0F0F0F', flexDirection:'column', gap:16 }}>
+      <div style={{ width:44, height:44, borderRadius:12, background:'#F5B800', color:'#000', fontSize:22, fontWeight:900, display:'flex', alignItems:'center', justifyContent:'center' }}>A</div>
+      <div style={{ width:24, height:24, border:'3px solid rgba(245,184,0,.2)', borderTopColor:'#F5B800', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}></div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  )
 
   if (!user) {
     return <Login onLogin={setUser} />
