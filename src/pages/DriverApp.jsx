@@ -445,6 +445,8 @@ function HomeTab({ driver, online, gpsActive, onToggle, activeTrip, onComplete, 
           ))}
         </div>
       </div>
+      {/* Bottom spacer — clears iPhone home indicator */}
+      <div style={{ height:28 }}/>
     </div>
   )
 }
@@ -490,7 +492,7 @@ function TripsTab({ driverId }) {
   )
 
   return (
-    <div style={{ padding:'20px 20px 8px' }}>
+    <div style={{ padding:'20px 20px 28px' }}>
       {/* Summary */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:20 }}>
         {[
@@ -604,7 +606,7 @@ function AccountTab({ driver, onLogout }) {
   }
 
   return (
-    <div style={{ padding:'20px 20px 8px' }}>
+    <div style={{ padding:'20px 20px 36px' }}>
       {/* Profile hero */}
       <div style={{ background:'linear-gradient(135deg, rgba(245,184,0,.12), rgba(245,184,0,.04))', border:'1px solid rgba(245,184,0,.2)', borderRadius:20, padding:'22px 18px', marginBottom:20 }}>
         <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:16 }}>
@@ -792,7 +794,9 @@ export default function DriverApp() {
     <div style={g.screen}>
       <style>{`
         * { -webkit-tap-highlight-color:transparent; box-sizing:border-box; font-family:'Inter',system-ui,sans-serif; }
-        html, body { height:100%; background:#0D0D14; margin:0; overscroll-behavior:none; }
+        html { height: 100%; height: 100dvh; }
+        body { height: 100%; margin:0; background:#0D0D14; overscroll-behavior:none; }
+        #root { height: 100%; display:flex; flex-direction:column; }
         @keyframes spin { to { transform:rotate(360deg) } }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
         @keyframes slideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
@@ -854,7 +858,7 @@ async function fetchTripDetails(id) {
 
 // ─── Styles ───────────────────────────────────────────────────
 const g = {
-  screen: { height:'100dvh', background:'#0D0D14', color:'#fff', display:'flex', flexDirection:'column', maxWidth:430, margin:'0 auto', overflow:'hidden' },
+  screen: { height:'100%', background:'#0D0D14', color:'#fff', display:'flex', flexDirection:'column', maxWidth:430, margin:'0 auto', overflow:'hidden' },
   loginBg: { position:'absolute', inset:0, zIndex:-1, background:'#0D0D14', overflow:'hidden' },
   bgCircle1: { position:'absolute', top:'-15%', left:'-25%', width:'80%', height:'55%', background:'radial-gradient(circle, rgba(245,184,0,0.08) 0%, transparent 70%)' },
   bgCircle2: { position:'absolute', bottom:'-10%', right:'-15%', width:'70%', height:'45%', background:'radial-gradient(circle, rgba(93,202,165,0.06) 0%, transparent 70%)' },
