@@ -121,11 +121,15 @@ export default function LiveMap({ drivers = [], onSelect, height = '320px' }) {
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
       {/* Legend */}
-      <div style={legendStyle}>
-        {Object.entries({ Available: '#5DCAA5', 'On trip': '#F5B800', Offline: '#4A4A5A' }).map(([label, color]) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,.6)' }}>{label}</span>
+      <div style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(13,13,20,.85)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '6px 10px', display: 'flex', gap: 12, zIndex: 1 }}>
+        {[
+          { label: 'Available', color: '#5DCAA5' },
+          { label: 'On Trip', color: '#F5B800' },
+          { label: 'Offline', color: '#555' }
+        ].map(item => (
+          <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color }} />
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,.6)', fontWeight: 600 }}>{item.label}</span>
           </div>
         ))}
       </div>
@@ -161,7 +165,7 @@ function popupHTML(d) {
 
 const legendStyle = {
   position: 'absolute',
-  bottom: 10, left: 10,
+  bottom: 10, right: 10,
   background: 'rgba(15,17,23,.85)',
   backdropFilter: 'blur(6px)',
   border: '1px solid rgba(255,255,255,.08)',

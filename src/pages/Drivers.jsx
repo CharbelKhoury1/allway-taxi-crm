@@ -162,6 +162,20 @@ export default function Drivers() {
             <div style={{ fontSize:13, color:'rgba(255,255,255,.4)' }}>No drivers online right now</div>
           </div>
         )}
+
+        {/* Legend - Bottom Right */}
+        <div style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(13,13,20,.85)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '6px 10px', display: 'flex', gap: 12, zIndex: 1 }}>
+          {[
+            { label: 'Available', color: '#5DCAA5' },
+            { label: 'On Trip', color: '#F5B800' },
+            { label: 'Offline', color: '#555' }
+          ].map(item => (
+            <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color }} />
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,.6)', fontWeight: 600 }}>{item.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* ── Search + filter ── */}

@@ -334,7 +334,7 @@ function HomeTab({ driver, online, gpsActive, onToggle, activeTrip, onComplete, 
   return (
     <div style={{ paddingBottom: 8 }}>
       {/* ── Hero header ─────────────── */}
-      <div style={{ padding:'28px 20px 0', background:`linear-gradient(180deg, rgba(245,184,0,0.06) 0%, transparent 100%)`, marginBottom:24 }}>
+      <div style={{ padding:'20px 20px 0', background:`linear-gradient(180deg, rgba(245,184,0,0.06) 0%, transparent 100%)`, marginBottom:24 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
           <div>
             <div style={{ fontSize:12, color:'rgba(255,255,255,.35)', fontWeight:600, marginBottom:2 }}>{greeting},</div>
@@ -639,7 +639,7 @@ function AccountTab({ driver, onLogout }) {
       {/* Vehicle info */}
       <div style={{ background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.07)', borderRadius:16, padding:'16px', marginBottom:20 }}>
         <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.28)', letterSpacing:.6, marginBottom:12 }}>VEHICLE DETAILS</div>
-        {[['Car Model', driver.car_model||'—'],['Plate', driver.plate||'—'],['All-time Trips', driver.total_trips??0],['Star Rating', `${driver.rating??'—'} / 5.0`]].map(([k,v], i, arr) => (
+        {[['Car Model', driver.car_model||'—'],['Plate', driver.plate||'—'],['All-time Trips', driver.total_trips??0],['Star Rating', `${driver.rating??'—'} / 5.0`]].map(([k,v], i) => (
           <div key={k} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding: i>0 ? '10px 0 0' : '0', borderTop: i>0 ? '1px solid rgba(255,255,255,.05)' : 'none', marginTop: i>0 ? 10 : 0 }}>
             <span style={{ fontSize:12, color:'rgba(255,255,255,.35)' }}>{k}</span>
             <span style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{v}</span>
@@ -658,7 +658,7 @@ function AccountTab({ driver, onLogout }) {
         {!collapsed && (
           <div style={{ padding:'0 16px 16px', animation:'slideUp .25s ease-out' }}>
             <form onSubmit={changePin}>
-              {[{k:'current',l:'Current PIN'},{k:'next',l:'New PIN'},{k:'confirm',l:'Confirm New PIN'}].map((f,i) => (
+              {[{k:'current',l:'Current PIN'},{k:'next',l:'New PIN'},{k:'confirm',l:'Confirm New PIN'}].map((f) => (
                 <div key={f.k} style={{ marginBottom:10 }}>
                   <div style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,.3)', letterSpacing:.5, marginBottom:5 }}>{f.l}</div>
                   <input style={{ ...g.fieldInput, paddingLeft:14, background:'rgba(255,255,255,.06)', borderColor:'rgba(255,255,255,.1)' }} className="drv-input" type="password" inputMode="numeric" placeholder="••••••" maxLength={6} value={pinForm[f.k]} onChange={ev => setPinForm(p => ({...p, [f.k]: ev.target.value}))} required/>
@@ -718,25 +718,52 @@ export default function DriverApp() {
 
   const goOnline = useCallback(async () => {
     if (!driver) return
-    const lock = await acquireWakeLock(); wakeLockRef.current = lock
-    pingTimer.current = setInterval(() => { supabase.from('drivers').update({ last_seen:new Date().toISOString() }).eq('id', driver.id) }, PING_INTERVAL)
-    await supabase.from('drivers').update({ online:true, status:'available', last_seen:new Date().toISOString() }).eq('id', driver.id)
-    supabase.channel(`driver-${driver.id}`).on('postgres_changes', { event:'UPDATE', schema:'public', table:'trips', filter:`driver_id=eq.${driver.id}` }, payload => {
-      const t = payload.new
-      if (t.status === 'dispatching') fetchTripDetails(t.id).then(full => { setPendingTrip(full); startCountdown() })
-      if (t.status === 'accepted' || t.status === 'on_trip') fetchTripDetails(t.id).then(full => { setActiveTrip(full); setPendingTrip(null); clearInterval(cdTimer.current) })
-      if (t.status === 'completed' || t.status === 'cancelled') setActiveTrip(null)
-    }).subscribe()
-    saveSession(driver, true)   // persist online=true so a refresh auto-resumes
+
+    // ① Start GPS + flip UI to ONLINE immediately — don't gate on async calls.
+    //   This matters most on refresh: acquireWakeLock() is blocked by iOS until
+    //   a user gesture, so calling setOnline AFTER it would leave GPS never starting.
+    saveSession(driver, true)
     setOnline(true)
+
+    // ② Wake lock — best-effort.  Requires a real tap, so on auto-resume after
+    //   refresh it falls back to 'none' gracefully without blocking anything.
+    acquireWakeLock().then(lock => { wakeLockRef.current = lock }).catch(() => {})
+
+    // ③ Heartbeat ping
+    clearInterval(pingTimer.current)
+    pingTimer.current = setInterval(() => {
+      supabase.from('drivers').update({ last_seen: new Date().toISOString() }).eq('id', driver.id)
+    }, PING_INTERVAL)
+
+    // ④ Supabase: mark available + subscribe to trip updates (non-blocking)
+    supabase.from('drivers')
+      .update({ online: true, status: 'available', last_seen: new Date().toISOString() })
+      .eq('id', driver.id)
+      .then(() => {
+        // Only subscribe once Supabase knows we're online
+        supabase.removeAllChannels()
+        supabase.channel(`driver-${driver.id}`)
+          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trips', filter: `driver_id=eq.${driver.id}` }, payload => {
+            const t = payload.new
+            if (t.status === 'dispatching') fetchTripDetails(t.id).then(full => { setPendingTrip(full); startCountdown() })
+            if (t.status === 'accepted' || t.status === 'on_trip') fetchTripDetails(t.id).then(full => { setActiveTrip(full); setPendingTrip(null); clearInterval(cdTimer.current) })
+            if (t.status === 'completed' || t.status === 'cancelled') setActiveTrip(null)
+          })
+          .subscribe()
+      })
+      .catch(() => {})  // Stay "online" locally even if Supabase is unreachable
   }, [driver])
 
-  const goOffline = useCallback(async () => {
-    clearInterval(pingTimer.current); clearInterval(cdTimer.current)
-    wakeLockRef.current?.release(); supabase.removeAllChannels()
-    if (driver) await supabase.from('drivers').update({ online:false, status:'offline' }).eq('id', driver.id)
-    saveSession(driver, false)  // persist online=false so refresh stays offline
+  const goOffline = useCallback(() => {
+    clearInterval(pingTimer.current)
+    clearInterval(cdTimer.current)
+    wakeLockRef.current?.release()
+    supabase.removeAllChannels()
+    saveSession(driver, false)   // refresh should stay offline
+    // Flip UI immediately
     setOnline(false); setGpsActive(false); setCoords(null); setActiveTrip(null); setPendingTrip(null)
+    // Mark offline in Supabase in the background
+    if (driver) supabase.from('drivers').update({ online: false, status: 'offline' }).eq('id', driver.id).catch(() => {})
   }, [driver])
 
   // Auto-resume GPS if driver was online before a refresh
@@ -772,9 +799,16 @@ export default function DriverApp() {
     setActiveTrip(null)
   }
 
-  if (!driver) return <DriverLogin onLogin={setDriver}/>
+  // Set dark theme-color in standalone PWA so the status bar background
+  // is #0D0D14 instead of the default yellow from index.html
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]')
+    const prev = meta?.getAttribute('content')
+    meta?.setAttribute('content', '#0D0D14')
+    return () => { if (prev) meta?.setAttribute('content', prev) }
+  }, [])
 
-  const TAB_H = 'calc(68px + env(safe-area-inset-bottom, 0px))'
+  if (!driver) return <DriverLogin onLogin={setDriver}/>
 
   const TABS = [
     {
@@ -802,7 +836,7 @@ export default function DriverApp() {
 
   return (
     /* Outer shell: owns the FULL physical screen edge-to-edge */
-    <div style={{ position:'fixed', inset:0, background:'#0D0D14' }}>
+    <div style={{ position:'fixed', inset:0, background:'#0D0D14', paddingTop:'env(safe-area-inset-top, 0px)' }}>
       <style>{`
         * { -webkit-tap-highlight-color:transparent; box-sizing:border-box; font-family:'Inter',system-ui,sans-serif; }
         html, body { margin:0; padding:0; background:#0D0D14; overscroll-behavior:none; }
