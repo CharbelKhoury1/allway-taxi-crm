@@ -799,12 +799,13 @@ export default function DriverApp() {
     saveSession(driver, false)   // refresh should stay offline
     // Flip UI immediately
     setOnline(false); setGpsActive(false); setCoords(null); setActiveTrip(null); setPendingTrip(null)
-    // Mark offline in Supabase and clear coordinates so the dashboard marker disappears
+    // Mark offline in Supabase. Coordinates are intentionally preserved so that
+    // when the driver comes back online (manually or via admin toggle) their last
+    // known position is immediately available and they reappear on the map.
+    // Marker removal on the dashboard is driven by online:false, not by null coords.
     if (driver) supabase.from('drivers').update({
       online: false,
       status: 'offline',
-      lat: null,
-      lng: null,
     }).eq('id', driver.id).catch(() => {})
   }, [driver])
 

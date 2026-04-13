@@ -35,6 +35,7 @@ export default function Drivers() {
   const [statusFilter, setFilter]   = useState('All')
   const [selected, setSelected]     = useState(null)
   const [toggling, setToggling]     = useState({})   // driverId → true while request in flight
+  const [mapReady, setMapReady]     = useState(false)
   const mapContainer = useRef(null)
   const mapRef       = useRef(null)
   const markersRef   = useRef({})   // { driverId: { marker, el, lngLat } }
@@ -64,18 +65,27 @@ export default function Drivers() {
   // ── Mapbox init ──────────────────────────────────────────────
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return
-    mapRef.current = new mapboxgl.Map({
+    const map = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/dark-v11',
       center: [35.50, 33.88],   // Beirut
       zoom: 11,
     })
-    mapRef.current.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
+    map.on('load', () => setMapReady(true))
+    mapRef.current = map
+
+    // Clean up on unmount so a remount (navigating away and back) gets a fresh map
+    return () => {
+      map.remove()
+      mapRef.current = null
+      setMapReady(false)
+    }
   }, [])
 
   // ── Sync markers ─────────────────────────────────────────────
   useEffect(() => {
-    if (!mapRef.current) return
+    if (!mapReady || !mapRef.current) return
 
     const online = drivers.filter(d => d.online && d.lat && d.lng)
 
@@ -132,7 +142,7 @@ export default function Drivers() {
         markersRef.current[d.id] = { marker, el, lngLat: [d.lng, d.lat] }
       }
     })
-  }, [drivers])
+  }, [drivers, mapReady])
 
   // ── Fly to selected driver ───────────────────────────────────
   useEffect(() => {
@@ -153,18 +163,18 @@ export default function Drivers() {
     const goingOnline = !driver.online
     const newStatus   = goingOnline ? 'available' : 'offline'
 
-    // Optimistic local update
+    // Optimistic local update — preserve lat/lng so the last known position
+    // stays available on the map when the driver is set back online.
     setDrivers(prev => prev.map(d =>
       d.id === driver.id
-        ? { ...d, online: goingOnline, status: newStatus, ...(goingOnline ? {} : { lat: null, lng: null }) }
+        ? { ...d, online: goingOnline, status: newStatus }
         : d
     ))
 
     await supabase.from('drivers').update({
-      online:     goingOnline,
-      status:     newStatus,
-      last_seen:  new Date().toISOString(),
-      ...(goingOnline ? {} : { lat: null, lng: null }),
+      online:    goingOnline,
+      status:    newStatus,
+      last_seen: new Date().toISOString(),
     }).eq('id', driver.id)
 
     setToggling(prev => ({ ...prev, [driver.id]: false }))
