@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || ''
 
 // Beirut centre
 const BEIRUT = [35.5018, 33.8938]
@@ -30,7 +30,7 @@ export default function LiveMap({ drivers = [], onSelect, height = '320px' }) {
 
   // ── Initialise map once ──────────────────────────────────
   useEffect(() => {
-    if (mapRef.current) return
+    if (mapRef.current || !mapboxgl.accessToken) return
 
     mapRef.current = new mapboxgl.Map({
       container: containerRef.current,
@@ -119,6 +119,16 @@ export default function LiveMap({ drivers = [], onSelect, height = '320px' }) {
   return (
     <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', height }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+
+      {!mapboxgl.accessToken && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', color: '#fff', textAlign: 'center', padding: 20 }}>
+          <div>
+            <div style={{ fontSize: 24, marginBottom: 10 }}>🗺️</div>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Mapbox Token Missing</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,.6)' }}>Please add VITE_MAPBOX_TOKEN to your .env file</div>
+          </div>
+        </div>
+      )}
 
       {/* Legend */}
       <div style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(13,13,20,.85)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '6px 10px', display: 'flex', gap: 12, zIndex: 1 }}>
