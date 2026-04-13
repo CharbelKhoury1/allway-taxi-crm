@@ -7,6 +7,24 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || ''
 // Beirut centre
 const BEIRUT = [35.5018, 33.8938]
 
+// Smoothly animate a Mapbox marker between two geographic positions using
+// rAF + lngLat interpolation. CSS transform transitions cause the marker to
+// lag behind the map during pan/zoom, so we interpolate coordinates instead.
+function animateMarker(marker, from, to, duration = 900) {
+  const start = performance.now()
+  const [fromLng, fromLat] = from
+  const [toLng,   toLat  ] = to
+  if (fromLng === toLng && fromLat === toLat) return
+
+  function step(now) {
+    const t = Math.min((now - start) / duration, 1)
+    const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t  // ease-in-out quad
+    marker.setLngLat([fromLng + (toLng - fromLng) * e, fromLat + (toLat - fromLat) * e])
+    if (t < 1) requestAnimationFrame(step)
+  }
+  requestAnimationFrame(step)
+}
+
 // Status → marker colour
 const STATUS_COLOR = {
   available: '#5DCAA5',   // green
@@ -75,9 +93,10 @@ export default function LiveMap({ drivers = [], onSelect, height = '320px' }) {
       const color = STATUS_COLOR[driver.status] || STATUS_COLOR.offline
 
       if (markersRef.current[driver.id]) {
-        // Update position + colour
-        const { marker, el } = markersRef.current[driver.id]
-        marker.setLngLat([driver.location.lng, driver.location.lat])
+        // Animate to new position instead of teleporting
+        const { marker, el, lngLat: from } = markersRef.current[driver.id]
+        animateMarker(marker, from, [driver.location.lng, driver.location.lat])
+        markersRef.current[driver.id].lngLat = [driver.location.lng, driver.location.lat]
         el.style.background = color
         el.title = tooltipText(driver)
       } else {
@@ -111,7 +130,7 @@ export default function LiveMap({ drivers = [], onSelect, height = '320px' }) {
           .setPopup(popup)
           .addTo(map)
 
-        markersRef.current[driver.id] = { marker, el }
+        markersRef.current[driver.id] = { marker, el, lngLat: [driver.location.lng, driver.location.lat] }
       }
     })
   }, [drivers, ready, onSelect])

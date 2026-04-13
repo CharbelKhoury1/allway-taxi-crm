@@ -29,8 +29,9 @@ export default function Dashboard({ onNavigate }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'drivers' },
         ({ new: d }) => {
-          if (d.online && d.lat && d.lng) {
-            // Driver online with location → add or update marker
+          const isLive = d.online && d.lat != null && d.lng != null
+          if (isLive) {
+            // Driver online with location → add or update marker immediately
             const mapped = toMapDriver(d)
             setDrivers(prev => {
               const exists = prev.some(x => x.id === d.id)
@@ -38,12 +39,11 @@ export default function Dashboard({ onNavigate }) {
                 ? prev.map(x => x.id === d.id ? mapped : x)
                 : [...prev, mapped]
             })
-            // Push to activity log
             pushLog(`Driver ${d.full_name} — ${d.status.replace('_', ' ')} · ${d.lat?.toFixed(4)}°N`)
-          } else if (!d.online) {
-            // Driver went offline → remove marker
+          } else if (d.online === false || d.lat == null || d.lng == null) {
+            // Driver went offline or location was cleared → remove marker
             setDrivers(prev => prev.filter(x => x.id !== d.id))
-            pushLog(`Driver ${d.full_name} went offline`)
+            if (d.online === false) pushLog(`Driver ${d.full_name} went offline`)
           }
         }
       )

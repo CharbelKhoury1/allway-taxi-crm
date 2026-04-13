@@ -697,12 +697,19 @@ export default function DriverApp() {
   const [todayStats, setTodayStats] = useState({ trips:0, earned:0 })
   const [weekStats, setWeekStats]   = useState({ trips:0, earned:0 })
 
-  const wakeLockRef = useRef(null)
-  const pingTimer   = useRef(null)
-  const cdTimer     = useRef(null)
+  const wakeLockRef    = useRef(null)
+  const pingTimer      = useRef(null)
+  const cdTimer        = useRef(null)
+  const tripChannelRef = useRef(null)   // holds only the trip-updates channel so the
+                                        // self-monitor channel is never accidentally removed
+  // Ref-based flag so handlePosition can check online state synchronously,
+  // avoiding a race where the GPS watch fires one last time after goOffline()
+  // sets setOnline(false) but before React has re-rendered and cleaned up the watch.
+  const onlineRef   = useRef(false)
   const shiftTime   = useShiftTimer(online)
 
   const handlePosition = useCallback((lat, lng) => {
+    if (!onlineRef.current) return   // driver went offline — discard stale GPS callback
     setCoords({ lat, lng }); setGpsActive(true)
     if (driver) pushLocation(driver.id, lat, lng)
   }, [driver])
@@ -730,6 +737,7 @@ export default function DriverApp() {
     // ① Start GPS + flip UI to ONLINE immediately — don't gate on async calls.
     //   This matters most on refresh: acquireWakeLock() is blocked by iOS until
     //   a user gesture, so calling setOnline AFTER it would leave GPS never starting.
+    onlineRef.current = true
     saveSession(driver, true)
     setOnline(true)
 
@@ -743,14 +751,31 @@ export default function DriverApp() {
       supabase.from('drivers').update({ last_seen: new Date().toISOString() }).eq('id', driver.id)
     }, PING_INTERVAL)
 
-    // ④ Supabase: mark available + subscribe to trip updates (non-blocking)
+    // ④ Immediately grab a fast initial position (accepts cached up to 60 s old)
+    //   so the driver pin appears on the dashboard map right away, before the
+    //   high-accuracy watchPosition fires its first fix.
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          if (!onlineRef.current) return
+          const { latitude: lat, longitude: lng } = pos.coords
+          setCoords({ lat, lng }); setGpsActive(true)
+          pushLocation(driver.id, lat, lng)
+        },
+        () => {},  // silent — watchPosition will provide the first real fix
+        { enableHighAccuracy: false, maximumAge: 60_000, timeout: 5_000 }
+      )
+    }
+
+    // ⑤ Supabase: mark available + subscribe to trip updates (non-blocking).
+    //   Only remove/re-create the trip channel, NOT all channels, so the
+    //   persistent self-monitor subscription (set up in the useEffect below) survives.
     supabase.from('drivers')
       .update({ online: true, status: 'available', last_seen: new Date().toISOString() })
       .eq('id', driver.id)
       .then(() => {
-        // Only subscribe once Supabase knows we're online
-        supabase.removeAllChannels()
-        supabase.channel(`driver-${driver.id}`)
+        if (tripChannelRef.current) supabase.removeChannel(tripChannelRef.current)
+        tripChannelRef.current = supabase.channel(`driver-trips-${driver.id}`)
           .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trips', filter: `driver_id=eq.${driver.id}` }, payload => {
             const t = payload.new
             if (t.status === 'dispatching') fetchTripDetails(t.id).then(full => { setPendingTrip(full); startCountdown() })
@@ -763,15 +788,24 @@ export default function DriverApp() {
   }, [driver])
 
   const goOffline = useCallback(() => {
+    // Synchronously block handlePosition from pushing any more GPS updates
+    onlineRef.current = false
     clearInterval(pingTimer.current)
     clearInterval(cdTimer.current)
     wakeLockRef.current?.release()
-    supabase.removeAllChannels()
+    // Only remove the trip channel — the self-monitor channel must stay alive
+    // so admin online/offline toggles continue to be received.
+    if (tripChannelRef.current) { supabase.removeChannel(tripChannelRef.current); tripChannelRef.current = null }
     saveSession(driver, false)   // refresh should stay offline
     // Flip UI immediately
     setOnline(false); setGpsActive(false); setCoords(null); setActiveTrip(null); setPendingTrip(null)
-    // Mark offline in Supabase in the background
-    if (driver) supabase.from('drivers').update({ online: false, status: 'offline' }).eq('id', driver.id).catch(() => {})
+    // Mark offline in Supabase and clear coordinates so the dashboard marker disappears
+    if (driver) supabase.from('drivers').update({
+      online: false,
+      status: 'offline',
+      lat: null,
+      lng: null,
+    }).eq('id', driver.id).catch(() => {})
   }, [driver])
 
   // Auto-resume GPS if driver was online before a refresh
@@ -780,6 +814,30 @@ export default function DriverApp() {
       goOnline()
     }
   }, [goOnline]) // goOnline is stable (useCallback), so this runs effectively once
+
+  // ── Self-monitor: react to admin-triggered online/offline changes ──
+  // When the admin toggles this driver's status from the Drivers page, the
+  // DriverApp detects the DB change here and automatically starts/stops GPS.
+  // Uses a dedicated channel that is never torn down by goOnline/goOffline so
+  // remote toggles are received regardless of the driver's current shift state.
+  useEffect(() => {
+    if (!driver) return
+    const ch = supabase
+      .channel(`driver-self-${driver.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'drivers', filter: `id=eq.${driver.id}` },
+        payload => {
+          const newOnline = payload.new.online
+          // Guard against our own updates triggering a loop — onlineRef is already
+          // flipped synchronously in goOnline/goOffline before the DB write.
+          if (newOnline === true  && !onlineRef.current) goOnline()
+          if (newOnline === false &&  onlineRef.current) goOffline()
+        }
+      )
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [driver, goOnline, goOffline])
 
   function startCountdown() {
     setCountdown(120); clearInterval(cdTimer.current)
@@ -918,11 +976,14 @@ export default function DriverApp() {
 
 // ─── Helpers ─────────────────────────────────────────────────
 async function pushLocation(id, lat, lng) {
-  // Write both the PostGIS geometry AND plain lat/lng columns so the admin map can read them
+  // Write both the PostGIS geometry AND plain lat/lng columns so the admin map can read them.
+  // Include online:true so the realtime payload always carries the online flag alongside
+  // coordinates — the dashboard's subscription checks d.online && d.lat && d.lng.
   await supabase.from('drivers').update({
     location: `POINT(${lng} ${lat})`,
     lat,
     lng,
+    online: true,
     last_seen: new Date().toISOString()
   }).eq('id', id)
 }
