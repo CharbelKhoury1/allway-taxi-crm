@@ -671,7 +671,15 @@ function AccountTab({ driver, onLogout }) {
         )}
       </div>
 
-      <button style={{ ...g.btnDecline, width:'100%', marginBottom:40 }} onClick={onLogout}>Logout & End Session</button>
+      {/* Extra bottom padding so this button clears the fixed tab bar */}
+      <div style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
+        <button
+          style={{ ...g.btnDecline, width:'100%', minHeight:52, touchAction:'manipulation', WebkitTapHighlightColor:'transparent' }}
+          onClick={onLogout}
+        >
+          Logout &amp; End Session
+        </button>
+      </div>
     </div>
   )
 }
@@ -880,7 +888,11 @@ export default function DriverApp() {
           {tab === 'trips'   && <div style={{ animation:'slideUp .35s ease-out' }}><TripsTab driverId={driver.id}/></div>}
           {tab === 'account' && (
             <div style={{ animation:'slideUp .35s ease-out' }}>
-              <AccountTab driver={driver} onLogout={() => { goOffline(); clearSession(); setDriver(null) }}/>
+              <AccountTab driver={driver} onLogout={() => {
+                try { goOffline() } catch (_) {}
+                clearSession()
+                setDriver(null)
+              }}/>
             </div>
           )}
         </div>

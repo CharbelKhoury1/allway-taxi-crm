@@ -1,50 +1,92 @@
 import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 import LiveMap from '../components/LiveMap'
 
-// Demo driver positions in Beirut (used until Supabase is wired up)
-const DEMO_DRIVERS = [
-  { id: '1', full_name: 'Karim M.',    plate: 'LB 1234', car_model: 'Toyota Camry',  status: 'available', location: { lat: 33.8938, lng: 35.5018 } },
-  { id: '2', full_name: 'Fadi A.',     plate: 'LB 5678', car_model: 'Kia Sportage',  status: 'on_trip',   location: { lat: 33.8812, lng: 35.4733 } },
-  { id: '3', full_name: 'Charbel K.',  plate: 'LB 9101', car_model: 'Hyundai Sonata',status: 'available', location: { lat: 33.9017, lng: 35.5156 } },
-  { id: '4', full_name: 'Georges H.',  plate: 'LB 1121', car_model: 'Mercedes C200', status: 'on_trip',   location: { lat: 33.9143, lng: 35.5420 } },
-  { id: '5', full_name: 'Joe N.',      plate: 'LB 3141', car_model: 'BMW 520',       status: 'on_trip',   location: { lat: 33.8684, lng: 35.5614 } },
-]
-
-const LOG_MESSAGES = [
-  "Trip #842 assigned to Driver Karim",
-  "Driver Fadi reached destination: Airport",
-  "New order detected in Hamra district",
-  "Driver Charbel is now Available",
-  "Customer 'Sara R.' is waiting at Hamra",
-  "Driver Joe is 2 mins from Gemmayzeh",
-  "Traffic delay reported on Shore Road",
-  "Automatic dispatcher balancing online..."
-]
-
 export default function Dashboard({ onNavigate }) {
-  const [logs, setLogs] = useState([])
-  const [stats, setStats] = useState({ trips: 7, online: 14, revenue: 840 })
+  const [drivers, setDrivers]   = useState([])
+  const [stats, setStats]       = useState({ trips: 0, online: 0, pending: 0, revenue: 0 })
+  const [logs, setLogs]         = useState([])
+  const [selected, setSelected] = useState(null)
 
-  // Simulation: fluctuate metrics + activity log
+  // ── Live driver locations ──────────────────────────────────────
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (Math.random() > 0.8) {
-        setStats(s => ({
-          ...s,
-          trips: Math.max(5, s.trips + (Math.random() > 0.5 ? 1 : -1)),
-          revenue: s.revenue + (Math.random() > 0.5 ? 12 : -8)
-        }))
+    // Initial fetch: all online drivers that have sent a location
+    async function fetchDrivers() {
+      const { data } = await supabase
+        .from('drivers')
+        .select('id, full_name, plate, car_model, status, online, lat, lng, last_seen')
+        .eq('online', true)
+      if (data) {
+        setDrivers(toMapDrivers(data))
       }
-      if (Math.random() > 0.7) {
-        const msg = LOG_MESSAGES[Math.floor(Math.random() * LOG_MESSAGES.length)]
-        setLogs(prev => [msg, ...prev].slice(0, 5))
-      }
-    }, 2000)
-    return () => clearInterval(interval)
+    }
+    fetchDrivers()
+
+    // Real-time: any UPDATE on drivers table → refresh the map pin
+    const channel = supabase
+      .channel('crm-drivers-live')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'drivers' },
+        ({ new: d }) => {
+          if (d.online && d.lat && d.lng) {
+            // Driver online with location → add or update marker
+            const mapped = toMapDriver(d)
+            setDrivers(prev => {
+              const exists = prev.some(x => x.id === d.id)
+              return exists
+                ? prev.map(x => x.id === d.id ? mapped : x)
+                : [...prev, mapped]
+            })
+            // Push to activity log
+            pushLog(`Driver ${d.full_name} — ${d.status.replace('_', ' ')} · ${d.lat?.toFixed(4)}°N`)
+          } else if (!d.online) {
+            // Driver went offline → remove marker
+            setDrivers(prev => prev.filter(x => x.id !== d.id))
+            pushLog(`Driver ${d.full_name} went offline`)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
   }, [])
+
+  // ── Live stats (trips + revenue) ───────────────────────────────
+  useEffect(() => {
+    async function fetchStats() {
+      const [tripsRes, pendingRes, revenueRes] = await Promise.all([
+        supabase.from('trips').select('id', { count: 'exact', head: true }).in('status', ['on_trip', 'accepted']),
+        supabase.from('trips').select('id', { count: 'exact', head: true }).in('status', ['pending', 'dispatching']),
+        supabase.from('trips').select('fare_usd').eq('status', 'completed').gte('completed_at', todayISO()),
+      ])
+      const revenue = (revenueRes.data || []).reduce((s, t) => s + Number(t.fare_usd || 0), 0)
+      setStats(s => ({
+        ...s,
+        trips: tripsRes.count ?? 0,
+        pending: pendingRes.count ?? 0,
+        revenue: Math.round(revenue),
+      }))
+    }
+    fetchStats()
+    // Refresh stats every 30 s
+    const id = setInterval(fetchStats, 30000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Keep online count in sync with map drivers
+  useEffect(() => {
+    setStats(s => ({ ...s, online: drivers.length }))
+  }, [drivers])
+
+  // ── Helpers ───────────────────────────────────────────────────
+  function pushLog(msg) {
+    setLogs(prev => [{ msg, time: new Date() }, ...prev].slice(0, 8))
+  }
 
   return (
     <div className="dash-container">
+      {/* ── Metrics ── */}
       <div className="metrics">
         <div className="metric anim-scale" style={{ animationDelay: '0.0s' }}>
           <div className="m-label">Active trips</div>
@@ -54,61 +96,89 @@ export default function Dashboard({ onNavigate }) {
         <div className="metric anim-scale" style={{ animationDelay: '0.1s' }}>
           <div className="m-label">Online drivers</div>
           <div className="m-val m-yellow">{stats.online}</div>
-          <div className="m-sub m-up">+3 vs yesterday</div>
+          <div className="m-sub">{stats.online > 0 ? 'live on map' : 'none active'}</div>
         </div>
         <div className="metric anim-scale" style={{ animationDelay: '0.2s' }}>
           <div className="m-label">Pending orders</div>
-          <div className="m-val m-dn">2</div>
-          <div className="m-sub m-dn">Needs dispatch</div>
+          <div className="m-val m-dn">{stats.pending}</div>
+          <div className="m-sub m-dn">{stats.pending > 0 ? 'Needs dispatch' : 'All clear'}</div>
         </div>
         <div className="metric anim-scale" style={{ animationDelay: '0.3s' }}>
           <div className="m-label">Revenue today</div>
           <div className="m-val">${stats.revenue}</div>
-          <div className="m-sub m-up">+12% vs yesterday</div>
+          <div className="m-sub">completed trips</div>
         </div>
       </div>
 
+      {/* ── Map + Activity ── */}
       <div className="grid-2-3 anim-fade" style={{ animationDelay: '0.4s', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 280px', gap: 20, marginBottom: 20 }}>
-        {/* LIVE MAPBOX MAP */}
+        {/* Live Map */}
         <div className="card" style={{ overflow: 'hidden', padding: 0 }}>
           <div className="card-head" style={{ padding: '12px 16px' }}>
             <span className="card-title">Live Dispatch Map</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 4, background: 'rgba(93,202,165,.1)' }}>
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#5DCAA5' }}></div>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#5DCAA5', animation: 'pulse 2s infinite' }} />
               <span style={{ fontSize: 9, fontWeight: 700, color: '#5DCAA5' }}>REAL-TIME</span>
             </div>
           </div>
           <LiveMap
-            drivers={DEMO_DRIVERS}
+            drivers={drivers}
             height="390px"
-            onSelect={d => console.log('Driver selected:', d)}
+            onSelect={d => { setSelected(d); pushLog(`Selected: ${d.full_name} · ${d.status}`) }}
           />
+          {/* Selected driver panel */}
+          {selected && (
+            <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: selected.status === 'available' ? 'rgba(93,202,165,.15)' : 'rgba(245,184,0,.12)', border: `1px solid ${selected.status === 'available' ? 'rgba(93,202,165,.3)' : 'rgba(245,184,0,.3)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: selected.status === 'available' ? '#5DCAA5' : '#F5B800', flexShrink: 0 }}>
+                {(selected.full_name || '?')[0]}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{selected.full_name}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-ter)' }}>{selected.car_model} · {selected.plate}</div>
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: selected.status === 'available' ? 'rgba(93,202,165,.12)' : 'rgba(245,184,0,.1)', color: selected.status === 'available' ? '#5DCAA5' : '#F5B800', border: `1px solid ${selected.status === 'available' ? 'rgba(93,202,165,.25)' : 'rgba(245,184,0,.2)'}` }}>
+                {selected.status.replace('_', ' ')}
+              </span>
+              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: 'var(--text-ter)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+            </div>
+          )}
         </div>
 
-        {/* LIVE ACTIVITY LOG */}
-        <div className="card" style={{ height: 440, display: 'flex', flexDirection: 'column' }}>
+        {/* Live Activity Log */}
+        <div className="card" style={{ height: selected ? 490 : 440, display: 'flex', flexDirection: 'column' }}>
           <div className="card-head">
             <span className="card-title">Live Activity</span>
+            {logs.length > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'rgba(245,184,0,.1)', color: '#F5B800' }}>{logs.length}</span>}
           </div>
-          <div style={{ flex: 1, padding: '12px', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {logs.length === 0 && <div style={{ fontSize: 11, color: 'var(--text-ter)', textAlign: 'center', marginTop: 40 }}>Initializing feed...</div>}
-              {logs.map((log, i) => (
-                <div key={i} className="anim-fade" style={{ display: 'flex', gap: 8, padding: '8px 10px', background: 'var(--surface)', borderRadius: 8, borderLeft: '3px solid var(--yellow)' }}>
-                  <div style={{ fontSize: 11, lineWeight: 1.4, color: 'var(--text-pri)' }}>
-                    <div style={{ fontSize: 9, color: 'var(--text-ter)', marginBottom: 2 }}>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
-                    {log}
+          <div style={{ flex: 1, padding: '12px', overflowY: 'auto' }}>
+            {logs.length === 0 ? (
+              <div style={{ fontSize: 11, color: 'var(--text-ter)', textAlign: 'center', marginTop: 40 }}>
+                Waiting for driver activity…
+                <div style={{ marginTop: 8, fontSize: 10, opacity: 0.6 }}>Driver locations will appear here when they go online</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {logs.map((entry, i) => (
+                  <div key={i} className="anim-fade" style={{ display: 'flex', gap: 8, padding: '8px 10px', background: 'var(--surface)', borderRadius: 8, borderLeft: '3px solid var(--yellow)' }}>
+                    <div style={{ fontSize: 11, lineHeight: 1.4, color: 'var(--text-pri)' }}>
+                      <div style={{ fontSize: 9, color: 'var(--text-ter)', marginBottom: 2 }}>
+                        {entry.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </div>
+                      {entry.msg}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div style={{ padding: 12, borderTop: '1px solid var(--border)', fontSize: 10, color: 'var(--text-ter)', textAlign: 'center' }}>
-            Connected to Dispatch Service 🟢
+          <div style={{ padding: 12, borderTop: '1px solid var(--border)', fontSize: 10, color: 'var(--text-ter)', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#5DCAA5', animation: 'pulse 2s infinite' }} />
+            Supabase Realtime connected
           </div>
         </div>
       </div>
 
+      {/* ── Orders + Chart ── */}
       <div className="grid-2">
         <div className="card anim-fade" style={{ animationDelay: '0.5s' }}>
           <div className="card-head">
@@ -145,9 +215,23 @@ export default function Dashboard({ onNavigate }) {
         </div>
       </div>
 
-      <div style={{ padding: '0 0 20px' }}></div>
+      <div style={{ padding: '0 0 20px' }} />
     </div>
   )
 }
 
-
+// ── Helpers ─────────────────────────────────────────────────────
+function toMapDriver(d) {
+  return {
+    ...d,
+    location: d.lat && d.lng ? { lat: Number(d.lat), lng: Number(d.lng) } : null,
+  }
+}
+function toMapDrivers(arr) {
+  return arr.map(toMapDriver).filter(d => d.location)
+}
+function todayISO() {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d.toISOString()
+}
