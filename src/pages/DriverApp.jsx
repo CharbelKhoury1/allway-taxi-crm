@@ -57,17 +57,27 @@ const clearSession = () => localStorage.removeItem(SESSION_KEY)
 // ─── Shift timer hook ─────────────────────────────────────────
 function useShiftTimer(running) {
   const [seconds, setSeconds] = useState(0)
-  const startRef = useRef(null)
+  const timerRef = useRef(null)
 
   useEffect(() => {
     if (running) {
-      startRef.current = Date.now() - seconds * 1000
-      const id = setInterval(() => setSeconds(Math.floor((Date.now() - startRef.current) / 1000)), 1000)
-      return () => clearInterval(id)
+      let start = localStorage.getItem('shift_start_at')
+      if (!start) {
+        start = Date.now().toString()
+        localStorage.setItem('shift_start_at', start)
+      }
+      
+      const startTime = parseInt(start)
+      const tick = () => setSeconds(Math.floor((Date.now() - startTime) / 1000))
+      
+      tick()
+      timerRef.current = setInterval(tick, 1000)
+      return () => clearInterval(timerRef.current)
     } else {
+      localStorage.removeItem('shift_start_at')
       setSeconds(0)
     }
-  }, [running]) // eslint-disable-line
+  }, [running])
 
   const h = String(Math.floor(seconds / 3600)).padStart(2, '0')
   const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')
@@ -185,6 +195,7 @@ function StatusRing({ online, gpsActive, onToggle, disabled }) {
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             gap: 2, transition: 'all .4s cubic-bezier(.34,1.56,.64,1)',
             opacity: disabled ? 0.5 : 1,
+            animation: (online && !acquiring) ? 'btnBreath 3s ease-in-out infinite' : 'none'
           }}
         >
           {acquiring ? (
@@ -237,6 +248,17 @@ function DriverLogin({ onLogin }) {
   return (
     <div style={g.screen}>
       <style>{`
+        @keyframes btnBreath {
+          0%, 100% { transform: scale(1); filter: brightness(1); }
+          50% { transform: scale(1.02); filter: brightness(1.1); }
+        }
+        @keyframes ringSpinAcquiring { to { transform: rotate(270deg); } }
+        @keyframes acquirePulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(0.85); opacity: 0.7; }
+        }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } }
         * { -webkit-tap-highlight-color:transparent; box-sizing:border-box; }
         body { overscroll-behavior:none; margin:0; background:#0D0D14; }
         @keyframes fadeUp { from { opacity:0; transform:translateY(20px) } to { opacity:1; transform:translateY(0) } }
@@ -541,8 +563,8 @@ function TripsTab({ driverId }) {
     fetchTrips()
   }, [driverId])
 
-  const statusColor = s => s==='completed'?'#5DCAA5':s==='on_trip'||s==='accepted'?'#F5B800':s==='cancelled'?'#F09595':'#888'
-  const statusLabel = s => s==='completed'?'Done':s==='on_trip'?'On Trip':s==='accepted'?'Accepted':s==='cancelled'?'Cancelled':s
+  const statusColor = s => s==='completed'?'#5DCAA5':s==='on_trip'||s==='accepted'||s==='dispatching'||s==='requested'?'#F5B800':s==='cancelled'?'#F09595':'#888'
+  const statusLabel = s => s==='completed'?'Done':s==='on_trip'?'On Trip':s==='accepted'?'Accepted':s==='requested'?'New Request':s==='dispatching'?'Dispatching':s==='cancelled'?'Cancelled':s
 
   function fmtDate(iso) {
     if (!iso) return ''
@@ -775,6 +797,8 @@ export default function DriverApp() {
   const cdTimer        = useRef(null)
   const tripChannelRef    = useRef(null)   // trip-updates for trips assigned to THIS driver
   const pendingChannelRef = useRef(null)   // broadcast channel: new pending trips (no driver yet)
+  const pollTimerRef      = useRef(null)   // interval handle for pending-trip polling
+  const shownTripIdRef    = useRef(null)   // trip ID currently in the popup (avoids re-triggering)
   // Ref-based flag so handlePosition can check online state synchronously,
   // avoiding a race where the GPS watch fires one last time after goOffline()
   // sets setOnline(false) but before React has re-rendered and cleaned up the watch.
@@ -855,6 +879,10 @@ export default function DriverApp() {
       .then(() => {
         if (tripChannelRef.current) supabase.removeChannel(tripChannelRef.current)
         tripChannelRef.current = supabase.channel(`driver-trips-${driver.id}`)
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'trips', filter: `driver_id=eq.${driver.id}` }, payload => {
+            const t = payload.new
+            if (t.status === 'dispatching') fetchTripDetails(t.id).then(full => { setPendingTrip(full); startCountdown() })
+          })
           .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trips', filter: `driver_id=eq.${driver.id}` }, payload => {
             const t = payload.new
             if (t.status === 'dispatching') fetchTripDetails(t.id).then(full => { setPendingTrip(full); startCountdown() })
@@ -864,11 +892,11 @@ export default function DriverApp() {
           .subscribe()
 
         // ── Broadcast channel: new trips with no driver assigned yet ──────
-        // Fires for every INSERT on trips where status='pending' (AI agent bookings).
+        // Fires for every INSERT on trips where status='requested' (AI agent bookings).
         // All online available drivers see this popup; first to accept claims it.
         if (pendingChannelRef.current) supabase.removeChannel(pendingChannelRef.current)
         pendingChannelRef.current = supabase.channel('pending-trips-broadcast')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'trips', filter: 'status=eq.pending' }, payload => {
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'trips', filter: 'status=eq.requested' }, payload => {
             if (!onlineRef.current) return
             fetchTripDetails(payload.new.id).then(full => {
               if (full) { setPendingTrip(full); startCountdown() }

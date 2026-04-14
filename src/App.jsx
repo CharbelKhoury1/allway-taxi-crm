@@ -63,7 +63,7 @@ const NAV = [
 
 
 const PAGE_TITLES  = { dash:'Dashboard', orders:'Orders', customers:'Customers', drivers:'Drivers', analytics:'Analytics', chats:'WhatsApp chats', staff:'Staff', marketing:'Marketing', loyalty:'Loyalty' }
-const PAGE_ACTIONS = { dash:'+ New order', orders:'Export CSV', customers:'+ Add customer', drivers:'+ Add driver', analytics:'Export report', chats:'Mark all read', staff:'+ Add staff', marketing:'+ New campaign', loyalty:'+ Add reward' }
+const PAGE_ACTIONS = { dash:'Refresh metrics', orders:'+ New order', customers:'+ Add customer', drivers:'+ Add driver', analytics:'Export report', chats:'Mark all read', staff:'+ Add staff', marketing:'+ New campaign', loyalty:'+ Add reward' }
 
 const PAGES = { dash:Dashboard, orders:Orders, customers:Customers, drivers:Drivers, analytics:Analytics, chats:Chats, staff:Staff, marketing:Marketing, loyalty:Loyalty }
 
@@ -90,6 +90,8 @@ export default function App() {
   const [page, setPage]   = useState(() => localStorage.getItem('currentPage') || 'dash')
   const [showModal, setShowModal] = useState(false)
   const [availableDrivers, setAvailableDrivers] = useState([])
+  const [customers, setCustomers] = useState([])
+  const [isNewCust, setIsNewCust] = useState(false)
   const time = useLiveTime()
 
   // Bootstrap: restore existing session, then listen for auth changes
@@ -169,20 +171,20 @@ export default function App() {
       const { error } = await supabase.from('conversations').update({ status: 'resolved' }).in('status', ['active', 'needs_human'])
       if (!error) { toast.success('All conversations marked as resolved'); setTimeout(() => window.location.reload(), 800) }
     } else if (page === 'orders') {
-      toast.success('Live CSV Export generated successfully')
-      window.dispatchEvent(new CustomEvent('export-csv'))
+      const [drvRes, custRes] = await Promise.all([
+        supabase.from('drivers').select('id, full_name, plate').eq('online', true).eq('status', 'available').order('full_name'),
+        supabase.from('customers').select('id, full_name, phone').order('full_name')
+      ])
+      setAvailableDrivers(drvRes.data || [])
+      setCustomers(custRes.data || [])
+      setIsNewCust(false)
+      setShowModal(true)
+    } else if (page === 'dash') {
+      toast.success('Refreshing live metrics...')
+      setTimeout(() => window.location.reload(), 500)
     } else if (page === 'analytics') {
       toast.success('Generating Analytics Report...')
       window.dispatchEvent(new CustomEvent('export-analytics'))
-    } else if (page === 'dash') {
-      const { data } = await supabase
-        .from('drivers')
-        .select('id, full_name, plate')
-        .eq('online', true)
-        .eq('status', 'available')
-        .order('full_name')
-      setAvailableDrivers(data || [])
-      setShowModal(true)
     } else if (['customers', 'drivers', 'staff', 'loyalty', 'marketing'].includes(page)) {
       setShowModal(true)
     }
@@ -201,37 +203,83 @@ export default function App() {
                 <button className="btn-close" onClick={() => setShowModal(false)}>×</button>
              </div>
              <div className="modal-body">
-                {page === 'dash' && (
+                {(page === 'dash' || page === 'orders') && (
                   <form onSubmit={async e => {
                     e.preventDefault();
-                    const fd       = new FormData(e.target);
+                    const fd = new FormData(e.target);
+                    let custId = fd.get('customer_id');
+                    
+                    if (isNewCust) {
+                       const { data, error } = await supabase.from('customers').insert({ 
+                         full_name: fd.get('cName'), 
+                         phone: fd.get('cPhone'),
+                         email: fd.get('cEmail'),
+                         notes: fd.get('cNotes')
+                       }).select().single();
+                       if (error) return toast.error(error.message);
+                       custId = data.id;
+                    }
+
+                    if (!custId) return toast.error('Please select or create a customer');
+
                     const driverId = fd.get('driver_id') || null;
                     const { error } = await supabase.from('trips').insert({
+                      customer_id:     custId,
                       pickup_address:  fd.get('p'),
                       dropoff_address: fd.get('d'),
                       driver_id:       driverId,
-                      status:          driverId ? 'dispatching' : 'pending',
+                      status:          driverId ? 'dispatching' : 'requested',
                       requested_at:    new Date().toISOString(),
                     });
                     if (!error) {
-                      toast.success(driverId ? 'Trip dispatched — driver notified!' : 'Trip queued — assign a driver from Orders');
+                      toast.success(driverId ? 'Order dispatched!' : 'Order received!');
                       setShowModal(false);
                       setTimeout(() => window.location.reload(), 800);
                     } else { toast.error(error.message); }
                   }}>
-                    <div className="f-row"><label>Pickup Address</label><input required name="p" placeholder="eg Mina Jbeil" /></div>
-                    <div className="f-row"><label>Dropoff Address</label><input required name="d" placeholder="eg City Centre, Beirut" /></div>
                     <div className="f-row">
-                      <label>Assign Driver{availableDrivers.length === 0 ? ' — none online' : ` (${availableDrivers.length} available)`}</label>
-                      <select name="driver_id" style={{width:'100%',padding:10,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,color:'var(--text-pri)',outline:'none',marginTop:6,fontFamily:'var(--font)',fontSize:13}}>
+                      <label>Customer</label>
+                      <div style={{display:'flex', gap:8, marginTop:6}}>
+                        {!isNewCust ? (
+                          <select name="customer_id" required={!isNewCust} style={{flex:1, padding:10, background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text-pri)', outline:'none', fontSize:13}}>
+                            <option value="">Select Existing...</option>
+                            {customers.map(c => <option key={c.id} value={c.id}>{c.full_name} · {c.phone}</option>)}
+                          </select>
+                        ) : (
+                          <div style={{flex:1, border:'1px solid var(--yellow)', borderRadius:8, padding:10, background:'rgba(245,184,0,.05)', fontSize:12, fontWeight:700, color:'var(--yellow)', display:'flex', alignItems:'center'}}>
+                            🆕 NEW CUSTOMER MODE
+                          </div>
+                        )}
+                        <button type="button" className="btn" style={{padding:'0 12px'}} onClick={() => setIsNewCust(!isNewCust)}>
+                          {isNewCust ? 'Cancel' : '+ New'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {isNewCust && (
+                      <div className="anim-scale" style={{background:'var(--surface)', padding:14, borderRadius:12, margin:'4px 0 16px', border:'1px dashed var(--border2)'}}>
+                        <div className="f-row" style={{marginBottom:10}}><label>Full Name</label><input name="cName" required={isNewCust} placeholder="eg Sarah Rizk" style={{marginTop:4}} /></div>
+                        <div className="f-row" style={{marginBottom:10}}><label>Phone Number</label><input name="cPhone" required={isNewCust} placeholder="+961..." style={{marginTop:4}} /></div>
+                        <div className="f-row" style={{marginBottom:10}}><label>Email (Optional)</label><input name="cEmail" type="email" placeholder="email@example.com" style={{marginTop:4}} /></div>
+                        <div className="f-row" style={{marginBottom:0}}><label>Customer Notes</label><input name="cNotes" placeholder="Special requirements..." style={{marginTop:4}} /></div>
+                      </div>
+                    )}
+
+                    <div className="f-row"><label>Pickup Address</label><input required name="p" placeholder="eg Mina Jbeil" style={{marginTop:4}} /></div>
+                    <div className="f-row"><label>Dropoff Address</label><input required name="d" placeholder="eg City Centre, Beirut" style={{marginTop:4}} /></div>
+                    
+                    <div className="f-row">
+                      <label>Assign Driver{availableDrivers.length === 0 ? ' — none online' : ` (${availableDrivers.length} online)`}</label>
+                      <select name="driver_id" style={{width:'100%',padding:10,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,color:'var(--text-pri)',outline:'none',marginTop:6,fontSize:13}}>
                         <option value="">— Unassigned (dispatch later)</option>
                         {availableDrivers.map(d => (
                           <option key={d.id} value={d.id}>{d.full_name} · {d.plate}</option>
                         ))}
                       </select>
                     </div>
+
                     <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:14}}>
-                      {availableDrivers.length > 0 ? 'Dispatch Trip' : 'Create Trip Request'}
+                      {isNewCust ? 'Register & Dispatch' : (availableDrivers.length > 0 ? 'Dispatch Trip' : 'Receive Order')}
                     </button>
                   </form>
                 )}
@@ -239,13 +287,22 @@ export default function App() {
                   <form onSubmit={async e => { 
                     e.preventDefault(); 
                     const fd = new FormData(e.target);
-                    const { error } = await supabase.from('customers').insert({ full_name: fd.get('name'), phone: fd.get('phone') });
+                    const { error } = await supabase.from('customers').insert({ 
+                      full_name: fd.get('name'), 
+                      phone: fd.get('phone'),
+                      email: fd.get('email'),
+                      address: fd.get('addr'),
+                      notes: fd.get('notes')
+                    });
                     if (!error) { toast.success('Customer added to database!'); setShowModal(false); setTimeout(() => window.location.reload(), 1000); }
                     else { toast.error(error.message); }
                   }}>
                     <div className="f-row"><label>Full Name</label><input required name="name" placeholder="eg Charbel Khoury" /></div>
                     <div className="f-row"><label>Phone Number</label><input required name="phone" placeholder="+961..." /></div>
-                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Save Customer</button>
+                    <div className="f-row"><label>Email Address</label><input name="email" type="email" placeholder="customer@email.com" /></div>
+                    <div className="f-row"><label>Primary Address</label><input name="addr" placeholder="Street, Building, Floor..." /></div>
+                    <div className="f-row"><label>Internal Notes</label><input name="notes" placeholder="e.g. Needs large trunk, frequent traveler" /></div>
+                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Save Profile</button>
                   </form>
                 )}
                 {page === 'drivers' && (

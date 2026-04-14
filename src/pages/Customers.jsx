@@ -102,9 +102,25 @@ function CustomerDetail({ customer, onRefresh }) {
         </div>
       </div>
       <div className="section-label">Account details</div>
-      <div style={{ fontSize:12, color:'var(--text-sec)', background:'var(--surface)', padding:12, borderRadius:8, marginBottom:16 }}>
-        Joined: {new Date(d.created_at).toLocaleDateString()}
+      <div style={{ background:'var(--surface)', padding:16, borderRadius:12, marginBottom:16 }}>
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontSize:10, textTransform:'uppercase', color:'var(--text-ter)', fontWeight:700, letterSpacing:'.03em', marginBottom:4 }}>Email address</div>
+          <div style={{ fontSize:13, color:'var(--text-pri)' }}>{d.email || '—'}</div>
+        </div>
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontSize:10, textTransform:'uppercase', color:'var(--text-ter)', fontWeight:700, letterSpacing:'.03em', marginBottom:4 }}>Primary address</div>
+          <div style={{ fontSize:13, color:'var(--text-pri)', lineHeight:1.4 }}>{d.address || '—'}</div>
+        </div>
+        <div>
+          <div style={{ fontSize:10, textTransform:'uppercase', color:'var(--text-ter)', fontWeight:700, letterSpacing:'.03em', marginBottom:4 }}>Dispatcher Notes</div>
+          <div style={{ fontSize:13, color:'var(--yellow)', fontStyle: d.notes ? 'normal' : 'italic' }}>{d.notes || 'No special instructions recorded'}</div>
+        </div>
       </div>
+      
+      <div style={{ fontSize:10, color:'var(--text-ter)', marginBottom:16, textAlign:'center' }}>
+        Registered: {new Date(d.created_at).toLocaleDateString()}
+      </div>
+
       <div style={{display:'flex', gap:8}}>
         <button
           className="btn"

@@ -45,7 +45,7 @@ export default function Orders() {
           total: data.length,
           completed: data.filter(r => r.status === 'completed').length,
           cancelled: data.filter(r => r.status === 'cancelled').length,
-          no_driver: data.filter(r => r.status === 'no_driver').length
+          no_driver: data.filter(r => r.status === 'no_driver' || r.status === 'requested').length
         })
       }
       setLoading(false)
@@ -67,7 +67,8 @@ export default function Orders() {
     
     const uiStatus = o.status === 'completed' ? 'Completed' : 
                      o.status === 'cancelled' ? 'Cancelled' :
-                     o.status === 'no_driver' ? 'No driver' : 'In progress'
+                     o.status === 'requested' ? 'Requested' :
+                     o.status === 'dispatching' ? 'Dispatching' : 'In progress'
                      
     const matchStatus = status === 'All statuses' || uiStatus === status
     return matchSearch && matchStatus
@@ -117,10 +118,11 @@ export default function Orders() {
         ) : filtered.map(o => {
           const uiStatus = o.status === 'completed' ? 'Completed' : 
                            o.status === 'cancelled' ? 'Cancelled' :
-                           o.status === 'no_driver' ? 'No driver' : 'In progress'
+                           o.status === 'requested' ? 'Requested' :
+                           o.status === 'dispatching' ? 'Dispatching' : 'In progress'
           const badge = o.status === 'completed' ? 'b-green' :
                         o.status === 'cancelled' ? 'b-red' :
-                        o.status === 'no_driver' ? 'b-yellow' : 'b-amber'
+                        o.status === 'requested' || o.status === 'no_driver' ? 'b-yellow' : 'b-amber'
 
           return (
             <div
