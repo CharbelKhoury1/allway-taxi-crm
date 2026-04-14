@@ -10,7 +10,7 @@ import Chats      from './pages/Chats'
 import Staff      from './pages/Staff'
 import Marketing  from './pages/Marketing'
 import Loyalty    from './pages/Loyalty'
-import WhatsAppDemo from './pages/WhatsAppDemo'
+
 
 
 const NAV = [
@@ -57,20 +57,13 @@ const NAV = [
         icon:<polygon points="8,1 10,6 15,6 11,9 13,14 8,11 3,14 5,9 1,6 6,6"/> },
     ],
   },
-  {
-    section: 'Labs',
-    items: [
-      { id:'wa-demo',   label:'WhatsApp AI',  badge:'NEW',
-        icon:<path d="M2 3a1 1 0 011-1h10a1 1 0 011 1v7a1 1 0 01-1 1H5l-3 2V3z"/> },
-    ],
-  },
 ]
 
 
-const PAGE_TITLES  = { dash:'Dashboard', orders:'Orders', customers:'Customers', drivers:'Drivers', analytics:'Analytics', chats:'WhatsApp chats', staff:'Staff', marketing:'Marketing', loyalty:'Loyalty', 'wa-demo':'WhatsApp AI Agent' }
-const PAGE_ACTIONS = { dash:'+ New order', orders:'Export CSV', customers:'+ Add customer', drivers:'+ Add driver', analytics:'Export report', chats:'Mark all read', staff:'+ Add staff', marketing:'+ New campaign', loyalty:'+ Add reward', 'wa-demo':'Reset Simulation' }
+const PAGE_TITLES  = { dash:'Dashboard', orders:'Orders', customers:'Customers', drivers:'Drivers', analytics:'Analytics', chats:'WhatsApp chats', staff:'Staff', marketing:'Marketing', loyalty:'Loyalty' }
+const PAGE_ACTIONS = { dash:'+ New order', orders:'Export CSV', customers:'+ Add customer', drivers:'+ Add driver', analytics:'Export report', chats:'Mark all read', staff:'+ Add staff', marketing:'+ New campaign', loyalty:'+ Add reward' }
 
-const PAGES = { dash:Dashboard, orders:Orders, customers:Customers, drivers:Drivers, analytics:Analytics, chats:Chats, staff:Staff, marketing:Marketing, loyalty:Loyalty, 'wa-demo':WhatsAppDemo }
+const PAGES = { dash:Dashboard, orders:Orders, customers:Customers, drivers:Drivers, analytics:Analytics, chats:Chats, staff:Staff, marketing:Marketing, loyalty:Loyalty }
 
 
 function useLiveTime() {

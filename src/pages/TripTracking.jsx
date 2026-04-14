@@ -229,23 +229,42 @@ export default function TripTracking({ tripId }) {
 
   // ── Map initialisation ────────────────────────────────────────────────────
   useEffect(() => {
-    if (mapRef.current || !mapboxgl.accessToken || !containerRef.current) return
+    // Guard: React StrictMode runs effects twice in dev (mount → cleanup → mount).
+    // We intentionally omit the cleanup so the second run hits this guard and exits,
+    // preventing Mapbox's canvas from being destroyed and recreated in a corrupt state.
+    if (mapRef.current || !containerRef.current) return
 
-    mapRef.current = new mapboxgl.Map({
+    // Set token inside the effect so it is guaranteed to run after module hydration.
+    const token = import.meta.env.VITE_MAPBOX_TOKEN
+    if (!token) { console.error('[TripTracking] VITE_MAPBOX_TOKEN is not set'); return }
+    mapboxgl.accessToken = token
+
+    const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
-      center: BEIRUT,
-      zoom: 13,
+      style:     'mapbox://styles/mapbox/dark-v11',
+      center:    BEIRUT,
+      zoom:      13,
       attributionControl: false,
     })
-    mapRef.current.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
-    mapRef.current.on('load', () => setMapReady(true))
 
-    return () => {
-      mapRef.current?.remove()
-      mapRef.current = null
-    }
-  }, [])
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
+
+    // resize() on 'load' recalculates the canvas dimensions after the style is ready.
+    map.on('load', () => {
+      map.resize()
+      setMapReady(true)
+    })
+
+    // Safety resize after paint — catches cases where the browser hasn't finished
+    // laying out the container by the time 'load' fires.
+    const resizeTimer = setTimeout(() => map.resize(), 300)
+
+    mapRef.current = map
+
+    // No cleanup returned — intentional. See guard comment above.
+    // The map lives for the full lifetime of this page component.
+    return () => clearTimeout(resizeTimer)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Place / move taxi marker when driver position changes ─────────────────
   useEffect(() => {
@@ -328,7 +347,7 @@ export default function TripTracking({ tripId }) {
       `}</style>
 
       {/* ── Map canvas — full screen ──────────────────────────────── */}
-      <div ref={containerRef} style={{ position: 'absolute', inset: 0 }}/>
+      <div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh' }}/>
 
       {/* ── Top bar: Allway Taxi branding + status badge ─────────── */}
       <div style={{
