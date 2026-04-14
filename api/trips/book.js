@@ -33,6 +33,9 @@ export default async function handler(req, res) {
   if (!requireAdmin(res)) return
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  // Merge body and query to handle any way the agent platform sends data
+  const params = { ...req.query, ...req.body }
+
   const {
     customer_phone,
     phone_number,
@@ -43,7 +46,8 @@ export default async function handler(req, res) {
     dropoff_lat = null,
     dropoff_lng = null,
     notes       = null,
-  } = req.body ?? {}
+  } = params
+
 
   const phone = customer_phone || phone_number
 
