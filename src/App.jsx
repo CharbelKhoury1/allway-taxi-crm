@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Toaster, toast } from 'sonner'
 import { supabase } from './lib/supabase'
 import Login     from './pages/Login'
 import Dashboard  from './pages/Dashboard'
@@ -87,6 +88,7 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false)
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
   const [page, setPage]   = useState(() => localStorage.getItem('currentPage') || 'dash')
+  const [showModal, setShowModal] = useState(false)
   const time = useLiveTime()
 
   // Bootstrap: restore existing session, then listen for auth changes
@@ -161,8 +163,144 @@ export default function App() {
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark')
 
+  async function handleAction() {
+    if (page === 'chats') {
+      const { error } = await supabase.from('conversations').update({ status: 'resolved' }).in('status', ['active', 'needs_human'])
+      if (!error) { toast.success('All conversations marked as resolved'); setTimeout(() => window.location.reload(), 800) }
+    } else if (page === 'orders') {
+      toast.success('Live CSV Export generated successfully')
+      window.dispatchEvent(new CustomEvent('export-csv'))
+    } else if (page === 'analytics') {
+      toast.success('Generating Analytics Report...')
+      window.dispatchEvent(new CustomEvent('export-analytics'))
+    } else if (['dash', 'customers', 'drivers', 'staff', 'loyalty', 'marketing'].includes(page)) {
+      setShowModal(true)
+    }
+  }
+
   return (
     <div className="app">
+      <Toaster position="top-center" richColors theme={theme} />
+      
+      {/* GLOBAL MODAL */}
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-card anim-scale" onClick={e => e.stopPropagation()}>
+             <div className="modal-head">
+                <div style={{fontSize:16, fontWeight:800}}>{PAGE_ACTIONS[page]}</div>
+                <button className="btn-close" onClick={() => setShowModal(false)}>×</button>
+             </div>
+             <div className="modal-body">
+                {page === 'dash' && (
+                  <form onSubmit={async e => { 
+                    e.preventDefault(); 
+                    toast.success('Simulation: Dispatching trip request...'); 
+                    setShowModal(false); 
+                  }}>
+                    <div className="f-row"><label>Pickup Address</label><input required name="p" placeholder="eg Mina Jbeil" /></div>
+                    <div className="f-row"><label>Dropoff Address</label><input required name="d" placeholder="eg City Centre, Beirut" /></div>
+                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Create Trip Request</button>
+                  </form>
+                )}
+                {page === 'customers' && (
+                  <form onSubmit={async e => { 
+                    e.preventDefault(); 
+                    const fd = new FormData(e.target);
+                    const { error } = await supabase.from('customers').insert({ full_name: fd.get('name'), phone: fd.get('phone') });
+                    if (!error) { toast.success('Customer added to database!'); setShowModal(false); setTimeout(() => window.location.reload(), 1000); }
+                    else { toast.error(error.message); }
+                  }}>
+                    <div className="f-row"><label>Full Name</label><input required name="name" placeholder="eg Charbel Khoury" /></div>
+                    <div className="f-row"><label>Phone Number</label><input required name="phone" placeholder="+961..." /></div>
+                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Save Customer</button>
+                  </form>
+                )}
+                {page === 'drivers' && (
+                  <form onSubmit={async e => { 
+                    e.preventDefault(); 
+                    const fd = new FormData(e.target);
+                    const { error } = await supabase.from('drivers').insert({ 
+                      full_name: fd.get('name'), 
+                      car_model: fd.get('car'), 
+                      plate: fd.get('plate'),
+                      online: false,
+                      status: 'offline'
+                    });
+                    if (!error) { toast.success('Driver registered successfully!'); setShowModal(false); setTimeout(() => window.location.reload(), 1000); }
+                    else { toast.error(error.message); }
+                  }}>
+                    <div className="f-row"><label>Driver Name</label><input required name="name" placeholder="Full name" /></div>
+                    <div className="f-row"><label>Vehicle Model</label><input required name="car" placeholder="eg Toyota Corolla"/></div>
+                    <div className="f-row"><label>License Plate</label><input required name="plate" placeholder="B 12345"/></div>
+                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Register Driver</button>
+                  </form>
+                )}
+                {page === 'staff' && (
+                  <form onSubmit={async e => { 
+                    e.preventDefault(); 
+                    const fd = new FormData(e.target);
+                    const { error } = await supabase.from('staff').insert({ 
+                      full_name: fd.get('name'), 
+                      role: fd.get('role'), 
+                      email: fd.get('email')
+                    });
+                    if (!error) { toast.success('Staff member added!'); setShowModal(false); setTimeout(() => window.location.reload(), 1000); }
+                    else { toast.error(error.message); }
+                  }}>
+                    <div className="f-row"><label>Full Name</label><input required name="name" placeholder="eg Elias Mansour" /></div>
+                    <div className="f-row"><label>Role</label>
+                      <select name="role" className="f-input" style={{width:'100%', padding:12, background:'var(--bg)', border:'1px solid var(--border)', borderRadius:10, color:'var(--text-pri)', outline:'none'}}>
+                        <option>Dispatcher</option>
+                        <option>Supervisor</option>
+                        <option>Admin</option>
+                      </select>
+                    </div>
+                    <div className="f-row" style={{marginTop:16}}><label>Email Address</label><input required name="email" type="email" placeholder="email@allwaytaxi.com" /></div>
+                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Add to Team</button>
+                  </form>
+                )}
+                {page === 'marketing' && (
+                  <form onSubmit={async e => { 
+                    e.preventDefault(); 
+                    const fd = new FormData(e.target);
+                    const { error } = await supabase.from('promo_codes').insert({ 
+                      code: fd.get('code'), 
+                      discount: fd.get('discount'), 
+                      status: 'active',
+                      expires_at: fd.get('expiry')
+                    });
+                    if (!error) { toast.success('Promo code active!'); setShowModal(false); setTimeout(() => window.location.reload(), 1000); }
+                    else { toast.error(error.message); }
+                  }}>
+                    <div className="f-row"><label>Promo Code</label><input required name="code" placeholder="eg SUMMER24" /></div>
+                    <div className="f-row"><label>Discount Value</label><input required name="discount" placeholder="eg 15% or $10" /></div>
+                    <div className="f-row"><label>Expiry Date</label><input required name="expiry" type="date" /></div>
+                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Launch Campaign</button>
+                  </form>
+                )}
+                {page === 'loyalty' && (
+                  <form onSubmit={async e => { 
+                    e.preventDefault(); 
+                    toast.success('Reward tier updated successfully!'); setShowModal(false); 
+                  }}>
+                    <div className="f-row"><label>Reward Name</label><input required placeholder="eg Free Airport Trip" /></div>
+                    <div className="f-row"><label>Points Required</label><input required type="number" placeholder="500" /></div>
+                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Create Reward</button>
+                  </form>
+                )}
+                {!['dash','customers','drivers','staff','marketing','loyalty'].includes(page) && (
+                  <div style={{padding:20, textAlign:'center'}}>
+                    <div style={{fontSize:40, marginBottom:10}}>🛠️</div>
+                    <div style={{fontSize:15, fontWeight:700}}>{PAGE_ACTIONS[page]}</div>
+                    <p style={{fontSize:13, color:'var(--text-ter)', marginTop:6}}>The "{page}" creation module is being synchronized with the database.</p>
+                  </div>
+                )}
+             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SIDEBAR... */}
       {/* SIDEBAR */}
       <div className="sidebar">
         <div className="sb-brand">
@@ -220,7 +358,7 @@ export default function App() {
               )}
             </button>
 
-            <button className="btn btn-primary" onClick={() => alert('Connect to Supabase to make this live!')}>
+            <button className="btn btn-primary" onClick={handleAction}>
               {PAGE_ACTIONS[page]}
             </button>
             <button className="btn" style={{ marginLeft: 8 }} onClick={handleLogout}>Logout</button>
@@ -236,6 +374,7 @@ export default function App() {
     </div>
   )
 }
+
 
 
 

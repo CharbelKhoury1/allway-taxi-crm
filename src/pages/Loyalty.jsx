@@ -17,9 +17,9 @@ export default function Loyalty() {
   useEffect(() => {
     async function fetchLoyalty() {
       const { data } = await supabase
-        .from('customers')
-        .select('id, full_name, phone, total_trips, created_at')
-        .order('total_trips', { ascending: false })
+        .from('loyalty_accounts')
+        .select('*, customers(full_name, created_at)')
+        .order('points_balance', { ascending: false })
         .limit(10)
       if (data) setMembers(data)
       setLoading(false)
@@ -67,18 +67,18 @@ export default function Loyalty() {
             ) : members.length === 0 ? (
               <div style={{padding:16, textAlign:'center', color:'var(--text-ter)' }}>No member data yet</div>
             ) : members.map((m, i) => {
-              const tier = getTier(m.total_trips || 0)
+              const tier = TIERS_DEF.find(t => t.name.toLowerCase() === m.tier?.toLowerCase()) || TIERS_DEF[0]
               return (
                 <div key={m.id} className="row">
                   <span style={{fontSize:12,fontWeight:800,color: i < 3 ? 'var(--yellow)' : 'var(--text-ter)',width:20,flexShrink:0}}>{i+1}</span>
-                  <div className="av av-y">{m.full_name[0]}</div>
+                  <div className="av av-y">{m.customers?.full_name?.[0] || '?'}</div>
                   <div className="row-info">
-                    <div className="row-name">{m.full_name}</div>
-                    <div className="row-sub">{m.total_trips || 0} trips · joined {new Date(m.created_at).toLocaleDateString()}</div>
+                    <div className="row-name">{m.customers?.full_name || 'Anonymous'}</div>
+                    <div className="row-sub">member since {m.customers?.created_at ? new Date(m.customers.created_at).toLocaleDateString() : 'recently'}</div>
                   </div>
                   <div style={{textAlign:'right'}}>
-                    <div style={{fontSize:14,fontWeight:800,color:'var(--text-pri)'}}>{(m.total_trips||0) * 100} pts</div>
-                    <span style={{fontSize:9,fontWeight:700,color:tier.color,background:tier.bg,padding:'2px 7px',borderRadius:10, textTransform:'uppercase'}}>{tier.name}</span>
+                    <div style={{fontSize:14,fontWeight:800,color:'var(--text-pri)'}}>{m.points_balance || 0} pts</div>
+                    <span style={{fontSize:9,fontWeight:700,color:tier.color,background:tier.bg,padding:'2px 7px',borderRadius:10, textTransform:'uppercase'}}>{m.tier}</span>
                   </div>
                 </div>
               )

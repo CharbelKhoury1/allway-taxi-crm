@@ -53,6 +53,12 @@ export default function Orders() {
     fetchData()
   }, [period])
 
+  useEffect(() => {
+    const handleExport = () => exportCSV(orders)
+    window.addEventListener('export-csv', handleExport)
+    return () => window.removeEventListener('export-csv', handleExport)
+  }, [orders])
+
   const filtered = orders.filter(o => {
     const q = search.toLowerCase()
     const name = o.customers?.full_name?.toLowerCase() || ''

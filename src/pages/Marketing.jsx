@@ -1,11 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const CAMPAIGNS = [
-  { icon:'chat',  iconBg:'rgba(245,184,0,.15)',  iconColor:'#F5B800', name:'Weekend Rush Promo',    sub:'WhatsApp · Active · Ends Sun', badge:'b-green', status:'Live'      },
-  { icon:'doc',   iconBg:'rgba(85,138,221,.15)', iconColor:'#85B7EB', name:'Airport Re-engagement', sub:'SMS · Active · Ongoing',         badge:'b-green', status:'Live'      },
-]
-
 const PCOL = '90px 1fr 60px 70px'
 
 function CampaignIcon({ icon, bg, color }) {
@@ -23,25 +18,27 @@ function CampaignIcon({ icon, bg, color }) {
 }
 
 export default function Marketing() {
-  const [promos, setPromos] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [promos, setPromos]       = useState([])
+  const [campaigns, setCampaigns] = useState([])
+  const [loading, setLoading]     = useState(true)
   const [promoFilter, setPromoFilter] = useState('All')
-  const [expandedCampaign, setExpandedCampaign] = useState(null)
 
   useEffect(() => {
-    async function fetchPromos() {
-      const { data } = await supabase
-        .from('promos')
-        .select('*')
-        .order('id')
-      if (data) setPromos(data)
+    async function fetchData() {
+      const [pRes, cRes] = await Promise.all([
+        supabase.from('promo_codes').select('*').order('created_at', { ascending: false }),
+        supabase.from('campaigns').select('*').order('created_at', { ascending: false })
+      ])
+      if (pRes.data) setPromos(pRes.data)
+      if (cRes.data) setCampaigns(cRes.data)
       setLoading(false)
     }
-    fetchPromos()
+    fetchData()
   }, [])
 
   const filteredPromos = promos.filter(p => {
-    const status = (p.expiry && new Date(p.expiry) < new Date()) ? 'Expired' : p.status === 'active' ? 'Active' : 'Inactive'
+    const isExpired = p.expires_at && new Date(p.expires_at) < new Date()
+    const status = isExpired ? 'Expired' : p.status === 'active' ? 'Active' : 'Inactive'
     if (promoFilter === 'All') return true
     return status === promoFilter
   })
@@ -60,16 +57,21 @@ export default function Marketing() {
           <div className="card-head">
             <span className="card-title">Live campaigns</span>
           </div>
-          {CAMPAIGNS.map(c => (
-            <div key={c.name}>
-              <div
-                className="row"
-                style={{ background: expandedCampaign === c.name ? 'var(--surface2)' : undefined }}
-                onClick={() => setExpandedCampaign(expandedCampaign === c.name ? null : c.name)}
-              >
-                <CampaignIcon icon={c.icon} bg={c.iconBg} color={c.iconColor} />
-                <div className="row-info"><div className="row-name">{c.name}</div><div className="row-sub">{c.sub}</div></div>
-                <span className={`badge ${c.badge}`}>{c.status}</span>
+          {campaigns.length === 0 ? (
+            <div style={{padding:20, textAlign:'center', color:'var(--text-ter)', fontSize:12}}>No active campaigns found.</div>
+          ) : campaigns.map(c => (
+            <div key={c.id}>
+              <div className="row">
+                <CampaignIcon
+                  icon={c.channel === 'whatsapp' ? 'chat' : 'doc'}
+                  bg={c.channel === 'whatsapp' ? 'rgba(245,184,0,.15)' : 'rgba(93,202,165,.15)'}
+                  color={c.channel === 'whatsapp' ? '#F5B800' : '#5DCAA5'}
+                />
+                <div className="row-info">
+                  <div className="row-name">{c.name}</div>
+                  <div className="row-sub">{c.channel.toUpperCase()} · Sent to {c.audience}</div>
+                </div>
+                <span className={`badge ${c.status === 'live' ? 'b-green' : 'b-gray'}`}>{c.status}</span>
               </div>
             </div>
           ))}
@@ -97,7 +99,7 @@ export default function Marketing() {
           ) : filteredPromos.length === 0 ? (
             <div style={{padding:'16px',textAlign:'center',fontSize:12,color:'var(--text-ter)'}}>No active codes found.</div>
           ) : filteredPromos.map(p => {
-              const isExpired = p.expiry && new Date(p.expiry) < new Date()
+              const isExpired = p.expires_at && new Date(p.expires_at) < new Date()
               const status = isExpired ? 'Expired' : p.status === 'active' ? 'Active' : 'Inactive'
               const badge  = isExpired ? 'b-gray' : p.status === 'active' ? 'b-green' : 'b-amber'
               return (
