@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { acquireWakeLock } from '../lib/wakeLock'
 
@@ -413,15 +413,15 @@ function HomeTab({ driver, online, gpsActive, gpsError, onToggle, activeTrip, on
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
           <div>
             <div style={{ fontSize:12, color:'rgba(255,255,255,.35)', fontWeight:600, marginBottom:2 }}>{greeting},</div>
-            <div style={{ fontSize:20, fontWeight:900 }}>{driver.full_name.split(' ')[0]} 👋</div>
+            <div style={{ fontSize:20, fontWeight:900 }}>{(driver?.full_name || 'Driver').split(' ')[0]} 👋</div>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ textAlign:'right' }}>
-              <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', fontWeight:700, letterSpacing:.5 }}>🚗 {driver.plate}</div>
-              <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginTop:2 }}>{driver.car_model}</div>
+              <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', fontWeight:700, letterSpacing:.5 }}>🚗 {driver?.plate || '—'}</div>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginTop:2 }}>{driver?.car_model || '—'}</div>
             </div>
             <div style={{ width:42, height:42, borderRadius:13, background:'linear-gradient(135deg,#F5B800,#e6a800)', color:'#000', fontSize:20, fontWeight:900, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 16px rgba(245,184,0,.25)' }}>
-              {driver.full_name?.[0]}
+              {driver?.full_name?.[0] || 'D'}
             </div>
           </div>
         </div>
@@ -1003,7 +1003,7 @@ export default function DriverApp() {
     // For broadcast trips (driver_id is null), just dismiss locally — the trip
     // stays pending and other online drivers can still accept it.
     if (pendingTrip.driver_id === driver.id) {
-      await supabase.from('trips').update({ driver_id: null, status: 'pending' }).eq('id', pendingTrip.id)
+      await supabase.from('trips').update({ driver_id: null, status: 'requested' }).eq('id', pendingTrip.id)
       await supabase.from('drivers').update({ status: 'available' }).eq('id', driver.id)
     }
     setPendingTrip(null)
