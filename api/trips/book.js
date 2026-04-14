@@ -80,7 +80,7 @@ export default async function handler(req, res) {
       .select()
       .single()
 
-    if (custErr) return res.status(500).json({ error: 'Failed to auto-register customer.', detail: custErr.message })
+    if (custErr) return res.status(500).json({ error: 'Failed to register customer. Please try again.' })
     customer = newCust
   }
 
@@ -128,7 +128,7 @@ export default async function handler(req, res) {
     .single()
 
   if (insertErr || !newTrip)
-    return res.status(500).json({ error: 'Failed to create trip.', detail: insertErr?.message })
+    return res.status(500).json({ error: 'Failed to create trip. Please try again.' })
 
   const baseUrl      = process.env.APP_BASE_URL || `https://${req.headers.host}`
   const tracking_url = `${baseUrl}/track/${newTrip.id}`

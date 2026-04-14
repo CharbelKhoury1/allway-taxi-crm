@@ -71,7 +71,7 @@ export default function Login({ onLogin }) {
         </form>
 
         <div className="login-footer">
-          <p>Demo Credentials: <span>admin@allwaytaxi.com / password123</span></p>
+          <p>Allway Taxi &copy; {new Date().getFullYear()} — Authorized access only</p>
         </div>
       </div>
 

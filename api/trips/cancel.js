@@ -67,7 +67,7 @@ export default async function handler(req, res) {
 
 
   if (updateErr)
-    return res.status(500).json({ error: 'Failed to cancel trip.', detail: updateErr.message })
+    return res.status(500).json({ error: 'Failed to cancel trip. Please contact support.' })
 
   return res.status(200).json({
     cancelled: true,
