@@ -830,7 +830,7 @@ function AccountTab({ driver, onLogout }) {
 // ─── Splash Screen ──────────────────────────────────────────
 function Splash() {
   return (
-    <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', background:'#0D0D14', zIndex:10000 }}>
+    <div style={{ position:'fixed', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', background:'#0D0D14', zIndex:10000 }}>
       <div style={{ textAlign:'center', animation:'pulse 2s ease-in-out infinite' }}>
         <img src="/allway-logo.svg" alt="Allway" style={{ width:80, height:72, marginBottom:28, filter:'drop-shadow(0 4px 20px rgba(245,184,0,0.5))' }}/>
         <div style={{ width:120, height:3, background: 'rgba(255,255,255,0.06)', borderRadius:10, overflow:'hidden', position:'relative', margin:'0 auto' }}>
@@ -1205,7 +1205,7 @@ export default function DriverApp() {
 
   return (
     /* Outer shell: owns the FULL physical screen edge-to-edge */
-    <div style={{ position:'fixed', inset:0, background:'#0D0D14', paddingTop:'env(safe-area-inset-top, 0px)' }}>
+    <div style={{ position:'fixed', inset:0, background:'#0D0D14' }}>
       <style>{`
         * { -webkit-tap-highlight-color:transparent; box-sizing:border-box; font-family:'Inter',system-ui,sans-serif; }
         html, body { margin:0; padding:0; background:#0D0D14; overscroll-behavior:none; }
@@ -1248,7 +1248,7 @@ export default function DriverApp() {
       {/* Inner container: constrained to 430px, full shell height */}
       <div style={g.screen}>
         {/* ── Branded App Bar ─────────────────────────────────────── */}
-        <div style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 18px 9px', background:'rgba(13,13,20,0.96)', borderBottom:'1px solid rgba(255,255,255,0.06)', WebkitBackdropFilter:'blur(16px)', backdropFilter:'blur(16px)' }}>
+        <div style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'calc(env(safe-area-inset-top, 0px) + 10px) 18px 9px', background:'rgba(13,13,20,0.96)', borderBottom:'1px solid rgba(255,255,255,0.06)', WebkitBackdropFilter:'blur(16px)', backdropFilter:'blur(16px)' }}>
           <div style={{ display:'flex', alignItems:'center', gap:9 }}>
             <img src="/allway-logo.svg" alt="Allway" style={{ width:26, height:24, filter:'drop-shadow(0 2px 8px rgba(245,184,0,0.4))' }}/>
             <span style={{ fontSize:13, fontWeight:900, letterSpacing:.4, color:'#fff' }}>ALLWAY <span style={{ color:'#F5B800' }}>TAXI</span></span>
@@ -1335,11 +1335,11 @@ async function fetchTripDetails(id) {
 
 // ─── Styles ───────────────────────────────────────────────────
 const g = {
-  screen: { height:'100vh', maxWidth:430, margin:'0 auto', background:'#0D0D14', color:'#fff', display:'flex', flexDirection:'column', overflow:'hidden', position:'relative' },
+  screen: { height:'100%', width:'100%', maxWidth:430, margin:'0 auto', background:'#0D0D14', color:'#fff', display:'flex', flexDirection:'column', overflow:'hidden', position:'relative' },
   loginBg: { position:'absolute', inset:0, zIndex:-1, background:'#0D0D14', overflow:'hidden' },
   bgCircle1: { position:'absolute', top:'-15%', left:'-25%', width:'80%', height:'55%', background:'radial-gradient(circle, rgba(245,184,0,0.08) 0%, transparent 70%)' },
   bgCircle2: { position:'absolute', bottom:'-10%', right:'-15%', width:'70%', height:'45%', background:'radial-gradient(circle, rgba(93,202,165,0.06) 0%, transparent 70%)' },
-  loginWrap: { flex:1, display:'flex', flexDirection:'column', alignItems:'center', padding:'56px 24px 40px', minHeight:'100dvh' },
+  loginWrap: { flex:1, display:'flex', flexDirection:'column', alignItems:'center', padding:'56px 24px 40px', minHeight:'100%' },
   loginLogoWrap: { width:72, height:72, background:'linear-gradient(135deg,#F5B800,#e6a800)', borderRadius:22, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px', boxShadow:'0 10px 40px rgba(245,184,0,.25)' },
   loginLogo: { fontSize:34, fontWeight:900, color:'#000' },
   loginBrand: { fontSize:26, fontWeight:900, letterSpacing:1, textAlign:'center' },
