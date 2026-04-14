@@ -1,11 +1,11 @@
 /**
- * Shared API key guard for all agent-facing endpoints.
+ * Shared Bearer token guard for all agent-facing endpoints.
  *
  * Every request from the WhatsApp AI agent must include:
- *   Header:  x-api-key: <AGENT_API_SECRET>
+ *   Header:  Authorization: Bearer <AGENT_API_SECRET>
  *
  * Set AGENT_API_SECRET in Vercel → Settings → Environment Variables.
- * Use the same value inside your agent platform as the secret.
+ * Use the same value inside Convocore as the Bearer token.
  */
 
 export function requireApiKey(req, res) {
@@ -15,19 +15,11 @@ export function requireApiKey(req, res) {
     return false
   }
 
-  // Support both 'Authorization: Bearer <token>' and 'x-api-key: <token>'
   const authHeader = req.headers['authorization']
-  const tokenHeader = req.headers['x-api-key']
-  
-  let provided = null
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    provided = authHeader.substring(7)
-  } else if (tokenHeader) {
-    provided = tokenHeader
-  }
+  const provided = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null
 
   if (!provided || provided !== configured) {
-    res.status(401).json({ error: 'Invalid or missing Authorization token.' })
+    res.status(401).json({ error: 'Unauthorized. Include header: Authorization: Bearer <token>' })
     return false
   }
   return true
@@ -37,6 +29,6 @@ export function requireApiKey(req, res) {
 export function setCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, Authorization')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
 }
 
