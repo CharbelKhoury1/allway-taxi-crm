@@ -89,12 +89,20 @@ export default function App() {
 
   // Bootstrap: restore existing session, then listen for auth changes
   useEffect(() => {
+    // 8-second timeout so a bad Supabase URL never hangs the loading screen
+    const timeout = setTimeout(() => {
+      setUser(false)
+      setAuthReady(true)
+    }, 8000)
+
     supabase.auth.getSession()
       .then(({ data: { session } }) => {
+        clearTimeout(timeout)
         setUser(session?.user ?? false)
         setAuthReady(true)
       })
       .catch(() => {
+        clearTimeout(timeout)
         // Supabase unreachable (e.g. missing env vars in deployment)
         setUser(false)
         setAuthReady(true)
