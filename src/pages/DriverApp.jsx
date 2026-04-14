@@ -773,8 +773,8 @@ export default function DriverApp() {
   const wakeLockRef    = useRef(null)
   const pingTimer      = useRef(null)
   const cdTimer        = useRef(null)
-  const tripChannelRef = useRef(null)   // holds only the trip-updates channel so the
-                                        // self-monitor channel is never accidentally removed
+  const tripChannelRef    = useRef(null)   // trip-updates for trips assigned to THIS driver
+  const pendingChannelRef = useRef(null)   // broadcast channel: new pending trips (no driver yet)
   // Ref-based flag so handlePosition can check online state synchronously,
   // avoiding a race where the GPS watch fires one last time after goOffline()
   // sets setOnline(false) but before React has re-rendered and cleaned up the watch.
@@ -862,6 +862,19 @@ export default function DriverApp() {
             if (t.status === 'completed' || t.status === 'cancelled') setActiveTrip(null)
           })
           .subscribe()
+
+        // ── Broadcast channel: new trips with no driver assigned yet ──────
+        // Fires for every INSERT on trips where status='pending' (AI agent bookings).
+        // All online available drivers see this popup; first to accept claims it.
+        if (pendingChannelRef.current) supabase.removeChannel(pendingChannelRef.current)
+        pendingChannelRef.current = supabase.channel('pending-trips-broadcast')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'trips', filter: 'status=eq.pending' }, payload => {
+            if (!onlineRef.current) return
+            fetchTripDetails(payload.new.id).then(full => {
+              if (full) { setPendingTrip(full); startCountdown() }
+            })
+          })
+          .subscribe()
       })
       .catch(() => {})  // Stay "online" locally even if Supabase is unreachable
   }, [driver])
@@ -874,7 +887,8 @@ export default function DriverApp() {
     wakeLockRef.current?.release()
     // Only remove the trip channel — the self-monitor channel must stay alive
     // so admin online/offline toggles continue to be received.
-    if (tripChannelRef.current) { supabase.removeChannel(tripChannelRef.current); tripChannelRef.current = null }
+    if (tripChannelRef.current)    { supabase.removeChannel(tripChannelRef.current);    tripChannelRef.current    = null }
+    if (pendingChannelRef.current) { supabase.removeChannel(pendingChannelRef.current); pendingChannelRef.current = null }
     saveSession(driver, false)   // refresh should stay offline
     // Flip UI immediately
     setOnline(false); setGpsActive(false); setGpsError(null); setCoords(null); setActiveTrip(null); setPendingTrip(null)
@@ -928,14 +942,42 @@ export default function DriverApp() {
 
   async function acceptTrip() {
     clearInterval(cdTimer.current)
-    await supabase.from('trips').update({ status:'accepted', accepted_at:new Date().toISOString() }).eq('id', pendingTrip.id)
-    await supabase.from('drivers').update({ status:'on_trip' }).eq('id', driver.id)
-    setActiveTrip(pendingTrip); setPendingTrip(null)
+    const isBroadcast = !pendingTrip.driver_id  // trip came in with no driver assigned yet
+
+    if (isBroadcast) {
+      // Atomic claim: only succeed if another driver hasn't already grabbed it
+      const { data, error } = await supabase.from('trips')
+        .update({ driver_id: driver.id, status: 'accepted', accepted_at: new Date().toISOString() })
+        .eq('id', pendingTrip.id)
+        .is('driver_id', null)   // guard: only claim if still unclaimed
+        .select('id')
+        .single()
+
+      if (error || !data) {
+        // Race lost — another driver claimed it first; silently dismiss
+        setPendingTrip(null)
+        return
+      }
+    } else {
+      // Trip was explicitly dispatched to this driver (driver_id already set)
+      await supabase.from('trips').update({ status: 'accepted', accepted_at: new Date().toISOString() }).eq('id', pendingTrip.id)
+    }
+
+    await supabase.from('drivers').update({ status: 'on_trip' }).eq('id', driver.id)
+    setActiveTrip({ ...pendingTrip, driver_id: driver.id })
+    setPendingTrip(null)
   }
 
   async function declineTrip() {
     clearInterval(cdTimer.current)
-    await supabase.from('trips').update({ status:'cancelled' }).eq('id', pendingTrip.id)
+    // If this trip was specifically dispatched to us, return it to the unassigned queue
+    // so another driver or the CRM can re-assign it.
+    // For broadcast trips (driver_id is null), just dismiss locally — the trip
+    // stays pending and other online drivers can still accept it.
+    if (pendingTrip.driver_id === driver.id) {
+      await supabase.from('trips').update({ driver_id: null, status: 'pending' }).eq('id', pendingTrip.id)
+      await supabase.from('drivers').update({ status: 'available' }).eq('id', driver.id)
+    }
     setPendingTrip(null)
   }
 

@@ -89,6 +89,7 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
   const [page, setPage]   = useState(() => localStorage.getItem('currentPage') || 'dash')
   const [showModal, setShowModal] = useState(false)
+  const [availableDrivers, setAvailableDrivers] = useState([])
   const time = useLiveTime()
 
   // Bootstrap: restore existing session, then listen for auth changes
@@ -173,7 +174,16 @@ export default function App() {
     } else if (page === 'analytics') {
       toast.success('Generating Analytics Report...')
       window.dispatchEvent(new CustomEvent('export-analytics'))
-    } else if (['dash', 'customers', 'drivers', 'staff', 'loyalty', 'marketing'].includes(page)) {
+    } else if (page === 'dash') {
+      const { data } = await supabase
+        .from('drivers')
+        .select('id, full_name, plate')
+        .eq('online', true)
+        .eq('status', 'available')
+        .order('full_name')
+      setAvailableDrivers(data || [])
+      setShowModal(true)
+    } else if (['customers', 'drivers', 'staff', 'loyalty', 'marketing'].includes(page)) {
       setShowModal(true)
     }
   }
@@ -194,19 +204,35 @@ export default function App() {
                 {page === 'dash' && (
                   <form onSubmit={async e => {
                     e.preventDefault();
-                    const fd = new FormData(e.target);
+                    const fd       = new FormData(e.target);
+                    const driverId = fd.get('driver_id') || null;
                     const { error } = await supabase.from('trips').insert({
                       pickup_address:  fd.get('p'),
                       dropoff_address: fd.get('d'),
-                      status:          'requested',
+                      driver_id:       driverId,
+                      status:          driverId ? 'dispatching' : 'pending',
                       requested_at:    new Date().toISOString(),
                     });
-                    if (!error) { toast.success('Trip request dispatched!'); setShowModal(false); setTimeout(() => window.location.reload(), 800); }
-                    else { toast.error(error.message); }
+                    if (!error) {
+                      toast.success(driverId ? 'Trip dispatched — driver notified!' : 'Trip queued — assign a driver from Orders');
+                      setShowModal(false);
+                      setTimeout(() => window.location.reload(), 800);
+                    } else { toast.error(error.message); }
                   }}>
                     <div className="f-row"><label>Pickup Address</label><input required name="p" placeholder="eg Mina Jbeil" /></div>
                     <div className="f-row"><label>Dropoff Address</label><input required name="d" placeholder="eg City Centre, Beirut" /></div>
-                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Dispatch Trip</button>
+                    <div className="f-row">
+                      <label>Assign Driver{availableDrivers.length === 0 ? ' — none online' : ` (${availableDrivers.length} available)`}</label>
+                      <select name="driver_id" style={{width:'100%',padding:10,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,color:'var(--text-pri)',outline:'none',marginTop:6,fontFamily:'var(--font)',fontSize:13}}>
+                        <option value="">— Unassigned (dispatch later)</option>
+                        {availableDrivers.map(d => (
+                          <option key={d.id} value={d.id}>{d.full_name} · {d.plate}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:14}}>
+                      {availableDrivers.length > 0 ? 'Dispatch Trip' : 'Create Trip Request'}
+                    </button>
                   </form>
                 )}
                 {page === 'customers' && (
