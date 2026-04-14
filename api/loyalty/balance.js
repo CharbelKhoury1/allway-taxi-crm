@@ -93,10 +93,11 @@ export default async function handler(req, res) {
     .limit(5)
 
   // Build a natural-language summary for the AI to relay
+  const TIER_ORDER = ['bronze', 'silver', 'gold', 'platinum']
+  const nextTierName = TIER_ORDER[TIER_ORDER.indexOf(tier) + 1] ?? null
   let summary = `${TIER_EMOJI[tier]} ${customer.full_name} has ${points.toLocaleString()} loyalty points (${tier.charAt(0).toUpperCase() + tier.slice(1)} tier).`
-  if (pointsToNext) {
-    const nextTierName = Object.keys(NEXT_TIER).find(t => NEXT_TIER[t] === nextThreshold)
-    summary += ` They need ${pointsToNext.toLocaleString()} more points to reach ${nextTierName?.charAt(0).toUpperCase() + nextTierName?.slice(1)} tier.`
+  if (pointsToNext && nextTierName) {
+    summary += ` They need ${pointsToNext.toLocaleString()} more points to reach ${nextTierName.charAt(0).toUpperCase() + nextTierName.slice(1)} tier.`
   } else {
     summary += ` They are at the highest Platinum tier — congratulations!`
   }
@@ -109,9 +110,7 @@ export default async function handler(req, res) {
     points_balance:       points,
     total_points_earned:  account.total_points_earned,
     points_to_next_tier:  pointsToNext,
-    next_tier:            pointsToNext
-      ? Object.keys(NEXT_TIER).find(t => NEXT_TIER[t] === nextThreshold)
-      : null,
+    next_tier:            nextTierName,
     enrolled_since:       account.enrolled_at,
     recent_transactions:  (recent ?? []).map(t => ({
       type:        t.type,         // 'earned' | 'redeemed' | 'expired'
