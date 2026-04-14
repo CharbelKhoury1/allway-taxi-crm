@@ -9,12 +9,12 @@ export default function Staff() {
 
   useEffect(() => {
     async function fetchStaff() {
-      // Trying to fetch from a 'staff' table. 
-      // If it doesn't exist yet, we handle the empty state.
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('staff')
         .select('*')
-      if (data) setStaff(data)
+        .order('created_at', { ascending: false })
+      // Table may not exist yet — handle gracefully
+      if (!error && data) setStaff(data)
       setLoading(false)
     }
     fetchStaff()
