@@ -192,14 +192,21 @@ export default function App() {
              </div>
              <div className="modal-body">
                 {page === 'dash' && (
-                  <form onSubmit={async e => { 
-                    e.preventDefault(); 
-                    toast.success('Simulation: Dispatching trip request...'); 
-                    setShowModal(false); 
+                  <form onSubmit={async e => {
+                    e.preventDefault();
+                    const fd = new FormData(e.target);
+                    const { error } = await supabase.from('trips').insert({
+                      pickup_address:  fd.get('p'),
+                      dropoff_address: fd.get('d'),
+                      status:          'requested',
+                      requested_at:    new Date().toISOString(),
+                    });
+                    if (!error) { toast.success('Trip request dispatched!'); setShowModal(false); setTimeout(() => window.location.reload(), 800); }
+                    else { toast.error(error.message); }
                   }}>
                     <div className="f-row"><label>Pickup Address</label><input required name="p" placeholder="eg Mina Jbeil" /></div>
                     <div className="f-row"><label>Dropoff Address</label><input required name="d" placeholder="eg City Centre, Beirut" /></div>
-                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Create Trip Request</button>
+                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Dispatch Trip</button>
                   </form>
                 )}
                 {page === 'customers' && (
@@ -250,9 +257,10 @@ export default function App() {
                     <div className="f-row"><label>Full Name</label><input required name="name" placeholder="eg Elias Mansour" /></div>
                     <div className="f-row"><label>Role</label>
                       <select name="role" className="f-input" style={{width:'100%', padding:12, background:'var(--bg)', border:'1px solid var(--border)', borderRadius:10, color:'var(--text-pri)', outline:'none'}}>
-                        <option>Dispatcher</option>
-                        <option>Supervisor</option>
-                        <option>Admin</option>
+                        <option value="dispatcher">Dispatcher</option>
+                        <option value="admin">Admin</option>
+                        <option value="support">Support</option>
+                        <option value="manager">Manager</option>
                       </select>
                     </div>
                     <div className="f-row" style={{marginTop:16}}><label>Email Address</label><input required name="email" type="email" placeholder="email@allwaytaxi.com" /></div>
@@ -260,32 +268,56 @@ export default function App() {
                   </form>
                 )}
                 {page === 'marketing' && (
-                  <form onSubmit={async e => { 
-                    e.preventDefault(); 
-                    const fd = new FormData(e.target);
-                    const { error } = await supabase.from('promo_codes').insert({ 
-                      code: fd.get('code'), 
-                      discount: fd.get('discount'), 
-                      status: 'active',
-                      expires_at: fd.get('expiry')
+                  <form onSubmit={async e => {
+                    e.preventDefault();
+                    const fd     = new FormData(e.target);
+                    const expiry = fd.get('expiry');
+                    const { error } = await supabase.from('promo_codes').insert({
+                      code:           fd.get('code').toUpperCase(),
+                      discount_type:  fd.get('discount_type'),
+                      discount_value: parseFloat(fd.get('discount_value')),
+                      status:         'active',
+                      expires_at:     expiry || null,
                     });
-                    if (!error) { toast.success('Promo code active!'); setShowModal(false); setTimeout(() => window.location.reload(), 1000); }
+                    if (!error) { toast.success('Promo code created!'); setShowModal(false); setTimeout(() => window.location.reload(), 1000); }
                     else { toast.error(error.message); }
                   }}>
-                    <div className="f-row"><label>Promo Code</label><input required name="code" placeholder="eg SUMMER24" /></div>
-                    <div className="f-row"><label>Discount Value</label><input required name="discount" placeholder="eg 15% or $10" /></div>
-                    <div className="f-row"><label>Expiry Date</label><input required name="expiry" type="date" /></div>
-                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Launch Campaign</button>
+                    <div className="f-row"><label>Promo Code</label><input required name="code" placeholder="eg SUMMER24" style={{textTransform:'uppercase'}} /></div>
+                    <div style={{display:'flex',gap:10,marginTop:8}}>
+                      <div className="f-row" style={{flex:1,marginTop:0}}>
+                        <label>Type</label>
+                        <select name="discount_type" style={{width:'100%',padding:10,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,color:'var(--text-pri)',outline:'none',marginTop:6,fontFamily:'var(--font)',fontSize:13}}>
+                          <option value="percent">Percent (%)</option>
+                          <option value="fixed">Fixed ($)</option>
+                        </select>
+                      </div>
+                      <div className="f-row" style={{flex:1,marginTop:0}}>
+                        <label>Value</label>
+                        <input required name="discount_value" type="number" min="1" placeholder="eg 15" style={{marginTop:6}} />
+                      </div>
+                    </div>
+                    <div className="f-row"><label>Expiry Date (optional)</label><input name="expiry" type="date" /></div>
+                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Create Promo Code</button>
                   </form>
                 )}
                 {page === 'loyalty' && (
-                  <form onSubmit={async e => { 
-                    e.preventDefault(); 
-                    toast.success('Reward tier updated successfully!'); setShowModal(false); 
+                  <form onSubmit={async e => {
+                    e.preventDefault();
+                    const fd    = new FormData(e.target);
+                    const phone = fd.get('phone');
+                    const pts   = parseInt(fd.get('points'), 10);
+                    const { data: cust } = await supabase.from('customers').select('id').eq('phone', phone).single();
+                    if (!cust) { toast.error('Customer not found with that phone number'); return; }
+                    const { data: la } = await supabase.from('loyalty_accounts').select('id, points_balance').eq('customer_id', cust.id).single();
+                    if (!la) { toast.error('No loyalty account found for this customer'); return; }
+                    const newBal = Math.max(0, (la.points_balance || 0) + pts);
+                    const { error } = await supabase.from('loyalty_accounts').update({ points_balance: newBal }).eq('id', la.id);
+                    if (!error) { toast.success(`Balance updated → ${newBal} pts`); setShowModal(false); setTimeout(() => window.location.reload(), 800); }
+                    else { toast.error(error.message); }
                   }}>
-                    <div className="f-row"><label>Reward Name</label><input required placeholder="eg Free Airport Trip" /></div>
-                    <div className="f-row"><label>Points Required</label><input required type="number" placeholder="500" /></div>
-                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Create Reward</button>
+                    <div className="f-row"><label>Customer Phone</label><input required name="phone" placeholder="+961..." /></div>
+                    <div className="f-row"><label>Points Adjustment (negative to deduct)</label><input required name="points" type="number" placeholder="eg 100 or -50" /></div>
+                    <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Adjust Points</button>
                   </form>
                 )}
                 {!['dash','customers','drivers','staff','marketing','loyalty'].includes(page) && (

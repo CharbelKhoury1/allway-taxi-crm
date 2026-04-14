@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { supabase } from '../lib/supabase'
 
 const LOC_SVG = {
@@ -69,12 +70,19 @@ function LocIcon({ name }) {
   )
 }
 
-function CustomerDetail({ customer }) {
+function CustomerDetail({ customer, onRefresh }) {
   if (!customer) return (
     <div style={{ padding: 40, textAlign:'center', color:'var(--text-ter)' }}>Select a customer to view details</div>
   )
   const d = customer
   const badge = d.status === 'vip' ? 'b-yellow' : d.status === 'blocked' ? 'b-red' : 'b-gray'
+
+  async function setStatus(newStatus) {
+    const { error } = await supabase.from('customers').update({ status: newStatus }).eq('id', d.id)
+    if (!error) { toast.success(`Customer ${newStatus === 'blocked' ? 'blocked' : newStatus === 'vip' ? 'promoted to VIP' : 'status updated'}`); onRefresh() }
+    else toast.error(error.message)
+  }
+
   return (
     <div className="profile-card">
       <div className="profile-top">
@@ -94,8 +102,24 @@ function CustomerDetail({ customer }) {
         </div>
       </div>
       <div className="section-label">Account details</div>
-      <div style={{ fontSize:12, color:'var(--text-sec)', background:'var(--surface)', padding:12, borderRadius:8 }}>
+      <div style={{ fontSize:12, color:'var(--text-sec)', background:'var(--surface)', padding:12, borderRadius:8, marginBottom:16 }}>
         Joined: {new Date(d.created_at).toLocaleDateString()}
+      </div>
+      <div style={{display:'flex', gap:8}}>
+        <button
+          className="btn"
+          style={{flex:1, fontSize:12, color: d.status === 'blocked' ? 'var(--green)' : 'var(--red)', borderColor: d.status === 'blocked' ? 'rgba(93,202,165,.3)' : 'rgba(240,100,100,.3)'}}
+          onClick={() => setStatus(d.status === 'blocked' ? 'active' : 'blocked')}
+        >
+          {d.status === 'blocked' ? 'Unblock' : 'Block'}
+        </button>
+        <button
+          className="btn"
+          style={{flex:1, fontSize:12, color:'var(--yellow)', borderColor:'rgba(245,184,0,.3)'}}
+          onClick={() => setStatus(d.status === 'vip' ? 'active' : 'vip')}
+        >
+          {d.status === 'vip' ? 'Remove VIP' : '★ Make VIP'}
+        </button>
       </div>
     </div>
   )
@@ -108,20 +132,19 @@ export default function Customers() {
   const [search, setSearch]       = useState('')
   const [filter, setFilter]       = useState('All customers')
 
-  useEffect(() => {
-    async function fetchCustomers() {
-      const { data } = await supabase
-        .from('customers')
-        .select('*')
-        .order('full_name')
-      if (data) {
-        setCustomers(data)
-        if (data.length > 0) setSelected(data[0].id)
-      }
-      setLoading(false)
+  async function fetchCustomers() {
+    const { data } = await supabase
+      .from('customers')
+      .select('*')
+      .order('full_name')
+    if (data) {
+      setCustomers(data)
+      if (data.length > 0) setSelected(id => id ?? data[0].id)
     }
-    fetchCustomers()
-  }, [])
+    setLoading(false)
+  }
+
+  useEffect(() => { fetchCustomers() }, [])
 
   const filtered = customers.filter(c => {
     const q = search.toLowerCase()
@@ -187,7 +210,7 @@ export default function Customers() {
             }
           )}
         </div>
-        <CustomerDetail customer={selectedCustomer} />
+        <CustomerDetail customer={selectedCustomer} onRefresh={fetchCustomers} />
       </div>
     </div>
   )

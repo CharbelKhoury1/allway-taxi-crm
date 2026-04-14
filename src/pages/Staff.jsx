@@ -29,6 +29,21 @@ export default function Staff() {
 
   return (
     <div className="anim-fade">
+      <div className="search-row">
+        <input
+          placeholder="Search by name, role, or email..."
+          style={{flex:1}}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)}>
+          <option>All roles</option>
+          <option value="dispatcher">Dispatcher</option>
+          <option value="admin">Admin</option>
+          <option value="support">Support</option>
+          <option value="manager">Manager</option>
+        </select>
+      </div>
       <div className="metrics">
         <div className="metric"><div className="m-label">Total staff</div><div className="m-val">{staff.length}</div><div className="m-sub">active records</div></div>
         <div className="metric"><div className="m-label">On shift now</div><div className="m-val m-up">{staff.length > 0 ? staff.length - 1 : 0}</div><div className="m-sub">dispatching live</div></div>
@@ -37,18 +52,18 @@ export default function Staff() {
       </div>
       {loading ? (
         <div style={{padding:60, textAlign:'center', color:'var(--text-ter)'}}>Loading staff directory...</div>
-      ) : staff.length === 0 ? (
+      ) : filteredList.length === 0 ? (
         <div className="card" style={{minHeight: 400, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', padding:40}}>
           <div style={{fontSize:48, marginBottom:16}}>👥</div>
           <div style={{fontSize:18, fontWeight:800, color:'var(--text-pri)', marginBottom:8}}>No staff members found</div>
           <p style={{fontSize:13, color:'var(--text-ter)', maxWidth:400, margin:'0 auto 24px', lineHeight:1.6}}>
-            Your staff directory is currently empty. Add dispatchers to see them here.
+            {search || roleFilter !== 'All roles' ? 'No staff match your search or filter.' : 'Your staff directory is currently empty. Add a staff member to see them here.'}
           </p>
         </div>
       ) : (
         <div className="table-wrap">
           <div className="table-head" style={{gridTemplateColumns:'1.5fr 1fr 1.5fr 100px'}}>Name<span>Role</span><span>Email</span><span>Joined</span></div>
-          {staff.map(s => (
+          {filteredList.map(s => (
             <div key={s.id} className="table-row" style={{gridTemplateColumns:'1.5fr 1fr 1.5fr 100px'}}>
               <div style={{display:'flex', alignItems:'center', gap:10}}>
                 <div className="av av-x" style={{width:28, height:28}}>{s.full_name?.[0] || '?'}</div>

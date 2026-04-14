@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { supabase } from '../lib/supabase'
 
-const PCOL = '90px 1fr 60px 70px'
 
 function CampaignIcon({ icon, bg, color }) {
   const paths = {
@@ -23,18 +23,32 @@ export default function Marketing() {
   const [loading, setLoading]     = useState(true)
   const [promoFilter, setPromoFilter] = useState('All')
 
-  useEffect(() => {
-    async function fetchData() {
-      const [pRes, cRes] = await Promise.all([
-        supabase.from('promo_codes').select('*').order('created_at', { ascending: false }),
-        supabase.from('campaigns').select('*').order('created_at', { ascending: false })
-      ])
-      if (pRes.data) setPromos(pRes.data)
-      if (cRes.data) setCampaigns(cRes.data)
-      setLoading(false)
-    }
-    fetchData()
-  }, [])
+  async function fetchData() {
+    const [pRes, cRes] = await Promise.all([
+      supabase.from('promo_codes').select('*').order('created_at', { ascending: false }),
+      supabase.from('campaigns').select('*').order('created_at', { ascending: false })
+    ])
+    if (pRes.data) setPromos(pRes.data)
+    if (cRes.data) setCampaigns(cRes.data)
+    setLoading(false)
+  }
+
+  useEffect(() => { fetchData() }, [])
+
+  async function togglePromo(p) {
+    const isExpired = p.expires_at && new Date(p.expires_at) < new Date()
+    if (isExpired) { toast.error('Cannot reactivate an expired promo code'); return }
+    const newStatus = p.status === 'active' ? 'inactive' : 'active'
+    const { error } = await supabase.from('promo_codes').update({ status: newStatus }).eq('code', p.code)
+    if (!error) { toast.success(`${p.code} is now ${newStatus}`); fetchData() }
+    else toast.error(error.message)
+  }
+
+  async function deletePromo(code) {
+    const { error } = await supabase.from('promo_codes').delete().eq('code', code)
+    if (!error) { toast.success(`${code} deleted`); fetchData() }
+    else toast.error(error.message)
+  }
 
   const filteredPromos = promos.filter(p => {
     const isExpired = p.expires_at && new Date(p.expires_at) < new Date()
@@ -93,21 +107,39 @@ export default function Marketing() {
               </select>
             </div>
           </div>
-          <div className="table-head" style={{gridTemplateColumns:PCOL,fontSize:9}}>Code<span>Discount</span><span>Type</span><span>Status</span></div>
+          <div className="table-head" style={{gridTemplateColumns:'90px 1fr 60px 70px 80px',fontSize:9}}>Code<span>Discount</span><span>Type</span><span>Status</span><span>Actions</span></div>
           {loading ? (
             <div style={{padding:20, textAlign:'center'}}>Loading...</div>
           ) : filteredPromos.length === 0 ? (
-            <div style={{padding:'16px',textAlign:'center',fontSize:12,color:'var(--text-ter)'}}>No active codes found.</div>
+            <div style={{padding:'16px',textAlign:'center',fontSize:12,color:'var(--text-ter)'}}>No codes found.</div>
           ) : filteredPromos.map(p => {
               const isExpired = p.expires_at && new Date(p.expires_at) < new Date()
               const status = isExpired ? 'Expired' : p.status === 'active' ? 'Active' : 'Inactive'
               const badge  = isExpired ? 'b-gray' : p.status === 'active' ? 'b-green' : 'b-amber'
               return (
-                <div key={p.code} className="table-row" style={{gridTemplateColumns:PCOL}}>
+                <div key={p.code} className="table-row" style={{gridTemplateColumns:'90px 1fr 60px 70px 80px'}}>
                   <span style={{fontSize:12,fontWeight:800,color: isExpired ? 'var(--text-ter)' : 'var(--yellow)',fontFamily:'monospace'}}>{p.code}</span>
                   <span style={{fontSize:12,color:'var(--text-sec)'}}>{p.discount_value}{p.discount_type === 'percent' ? '%' : '$'} off</span>
                   <span style={{fontSize:11,color:'var(--text-ter)', textTransform:'capitalize'}}>{p.discount_type}</span>
                   <span className={`badge ${badge}`}>{status}</span>
+                  <div style={{display:'flex',gap:5}}>
+                    {!isExpired && (
+                      <button
+                        className="btn"
+                        style={{fontSize:10,padding:'3px 8px',color: p.status === 'active' ? 'var(--text-ter)' : 'var(--green)',borderColor: p.status === 'active' ? 'var(--border)' : 'rgba(93,202,165,.3)'}}
+                        onClick={() => togglePromo(p)}
+                      >
+                        {p.status === 'active' ? 'Pause' : 'Activate'}
+                      </button>
+                    )}
+                    <button
+                      className="btn"
+                      style={{fontSize:10,padding:'3px 8px',color:'var(--red)',borderColor:'rgba(240,100,100,.3)'}}
+                      onClick={() => { if (window.confirm(`Delete ${p.code}?`)) deletePromo(p.code) }}
+                    >
+                      Del
+                    </button>
+                  </div>
                 </div>
               )
             }
