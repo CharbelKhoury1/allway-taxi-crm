@@ -3,10 +3,13 @@ import { supabase } from '../lib/supabase'
 import LiveMap from '../components/LiveMap'
 
 export default function Dashboard({ onNavigate }) {
-  const [drivers, setDrivers]   = useState([])
-  const [stats, setStats]       = useState({ trips: 0, online: 0, pending: 0, revenue: 0 })
-  const [logs, setLogs]         = useState([])
-  const [selected, setSelected] = useState(null)
+  const [drivers, setDrivers]     = useState([])
+  const [stats, setStats]         = useState({ trips: 0, online: 0, pending: 0, revenue: 0 })
+  const [recentTrips, setRecent]  = useState([])
+  const [chartData, setChart]     = useState([])
+  const [logs, setLogs]           = useState([])
+  const [selected, setSelected]   = useState(null)
+
 
   // ── Live driver locations ──────────────────────────────────────
   // Drivers whose last_seen is older than this are considered stale/disconnected
@@ -74,12 +77,34 @@ export default function Dashboard({ onNavigate }) {
   // ── Live stats (trips + revenue) ───────────────────────────────
   useEffect(() => {
     async function fetchStats() {
-      const [tripsRes, pendingRes, revenueRes] = await Promise.all([
+      const today = todayISO()
+      const [tripsRes, pendingRes, revenueRes, recentRes, chartRes] = await Promise.all([
         supabase.from('trips').select('id', { count: 'exact', head: true }).in('status', ['on_trip', 'accepted']),
         supabase.from('trips').select('id', { count: 'exact', head: true }).in('status', ['pending', 'dispatching']),
-        supabase.from('trips').select('fare_usd').eq('status', 'completed').gte('completed_at', todayISO()),
+        supabase.from('trips').select('fare_usd').eq('status', 'completed').gte('completed_at', today),
+        supabase.from('trips').select('id, status, pickup_address, dropoff_address, customers(full_name)').in('status', ['pending','dispatching','accepted','on_trip']).order('requested_at', {ascending:false}).limit(5),
+        supabase.from('trips').select('requested_at').gte('requested_at', today)
       ])
+
+      // Revenue
       const revenue = (revenueRes.data || []).reduce((s, t) => s + Number(t.fare_usd || 0), 0)
+      
+      // Chart Logic (last 12 hours)
+      const counts = new Array(12).fill(0)
+      const now = new Date()
+      chartRes.data?.forEach(t => {
+        const hour = new Date(t.requested_at).getHours()
+        const diff = now.getHours() - hour
+        if (diff >= 0 && diff < 12) counts[11 - diff]++
+      })
+      const mappedChart = counts.map((c, i) => ({ 
+        h: Math.max(10, (c / (Math.max(...counts) || 1)) * 100), 
+        l: `${(now.getHours() - (11 - i) + 24) % 24}:00`,
+        p: c === Math.max(...counts) && c > 0
+      }))
+
+      setRecent(recentRes.data || [])
+      setChart(mappedChart)
       setStats(s => ({
         ...s,
         trips: tripsRes.count ?? 0,
@@ -88,10 +113,10 @@ export default function Dashboard({ onNavigate }) {
       }))
     }
     fetchStats()
-    // Refresh stats every 30 s
     const id = setInterval(fetchStats, 30000)
     return () => clearInterval(id)
   }, [])
+
 
   // Keep online count in sync with map drivers
   useEffect(() => {
@@ -204,32 +229,37 @@ export default function Dashboard({ onNavigate }) {
             <span className="card-title">Active &amp; pending orders</span>
             <span className="card-link" onClick={() => onNavigate('orders')}>View all →</span>
           </div>
-          {[
-            { cls:'av-y', init:'AK', name:'Ahmad Khalil', route:'Hamra → Verdun',           badge:'b-amber', status:'Dispatching' },
-            { cls:'av-r', init:'SR', name:'Sara Rizk',    route:'Achrafieh → Airport',       badge:'b-red',   status:'No driver'  },
-            { cls:'av-b', init:'MH', name:'Maya Haddad',  route:'Jounieh → Downtown',        badge:'b-blue',  status:'Assigned'   },
-            { cls:'av-g', init:'JN', name:'Joe Nasr',     route:'Mar Mikhael → Dbayeh',      badge:'b-green', status:'In progress'},
-            { cls:'av-p', init:'LF', name:'Lara Farah',   route:'Zalka → Gemmayzeh',         badge:'b-green', status:'In progress'},
-          ].map(o => (
-            <div className="row" key={o.name} onClick={() => onNavigate('orders')}>
-              <div className={`av ${o.cls}`}>{o.init}</div>
-              <div className="row-info"><div className="row-name">{o.name}</div><div className="row-sub">{o.route}</div></div>
-              <span className={`badge ${o.badge}`}>{o.status}</span>
-            </div>
-          ))}
+          {recentTrips.length === 0 ? (
+            <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--text-ter)' }}>No active trips right now</div>
+          ) : recentTrips.map(o => {
+            const statusMap = { pending:'Dispatching', dispatching:'Dispatching', accepted:'Assigned', on_trip:'In progress' }
+            const badgeMap = { pending:'b-amber', dispatching:'b-amber', accepted:'b-blue', on_trip:'b-green' }
+            return (
+              <div className="row" key={o.id} onClick={() => onNavigate('orders')}>
+                <div className={`av ${o.status === 'on_trip' ? 'av-g' : 'av-y'}`}>{o.customers?.full_name?.[0] || 'C'}</div>
+                <div className="row-info">
+                  <div className="row-name">{o.customers?.full_name || 'Customer'}</div>
+                  <div className="row-sub">{o.pickup_address.split(',')[0]} → {o.dropoff_address.split(',')[0]}</div>
+                </div>
+                <span className={`badge ${badgeMap[o.status] || 'b-gray'}`}>{statusMap[o.status] || o.status}</span>
+              </div>
+            )
+          })}
+
         </div>
 
         <div className="card anim-fade" style={{ animationDelay: '0.6s' }}>
           <div className="card-head"><span className="card-title">Trips per hour</span><span className="card-meta">Today</span></div>
           <div className="chart-wrap">
             <div className="bars">
-              {[{h:25,l:'7a'},{h:38,l:'8'},{h:53,l:'9'},{h:65,l:'10'},{h:88,l:'11',p:true},{h:100,l:'12',p:true},{h:84,l:'1p',p:true},{h:68,l:'2'},{h:49,l:'3'},{h:38,l:'4'},{h:59,l:'5'},{h:94,l:'6',p:true}].map((b, i) => (
+              {chartData.map((b, i) => (
                 <div className="bar-col" key={b.l}>
                   <div className={`bar-fill${b.p?' peak':''}`} style={{height:`${b.h}%`, transitionDelay: `${i * 50}ms`}}></div>
                   <div className="bar-lbl">{b.l}</div>
                 </div>
               ))}
             </div>
+
           </div>
         </div>
       </div>

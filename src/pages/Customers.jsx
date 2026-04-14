@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { CUSTOMERS, CUSTOMER_LIST } from '../data/customers'
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 
 const LOC_SVG = {
   Home: (
@@ -69,55 +69,71 @@ function LocIcon({ name }) {
   )
 }
 
-function CustomerDetail({ id }) {
-  const d = CUSTOMERS[id]
-  if (!d) return null
+function CustomerDetail({ customer }) {
+  if (!customer) return (
+    <div style={{ padding: 40, textAlign:'center', color:'var(--text-ter)' }}>Select a customer to view details</div>
+  )
+  const d = customer
+  const badge = d.status === 'vip' ? 'b-yellow' : d.status === 'blocked' ? 'b-red' : 'b-gray'
   return (
     <div className="profile-card">
       <div className="profile-top">
-        <div className={`av-lg ${d.cls}`}>{d.init}</div>
+        <div className={`av-lg av-y`}>{d.full_name[0]}</div>
         <div>
-          <div style={{fontSize:16,fontWeight:800,color:'var(--text-pri)',marginBottom:4}}>{d.name}</div>
-          <div style={{marginBottom:6}}><span className={`badge ${d.badge}`}>{d.badgeText}</span></div>
-          <div style={{fontSize:12,color:'var(--text-ter)'}}>{d.phone} · {d.lang}</div>
+          <div style={{fontSize:16,fontWeight:800,color:'var(--text-pri)',marginBottom:4}}>{d.full_name}</div>
+          <div style={{marginBottom:6}}><span className={`badge ${badge}`}>{d.status}</span></div>
+          <div style={{fontSize:12,color:'var(--text-ter)'}}>{d.phone}</div>
         </div>
       </div>
       <div className="profile-stats" style={{ gap: '12px', margin: '20px 0' }}>
-        <div className="pstat" style={{ padding: '14px' }}><div className="pstat-val">{d.trips}</div><div className="pstat-lbl">Total trips</div></div>
-        <div className="pstat" style={{ padding: '14px' }}><div className="pstat-val">{d.spend}</div><div className="pstat-lbl">Total spend</div></div>
+        <div className="pstat" style={{ padding: '14px' }}><div className="pstat-val">{d.total_trips || 0}</div><div className="pstat-lbl">Total trips</div></div>
+        <div className="pstat" style={{ padding: '14px' }}><div className="pstat-val">${d.total_spend || 0}</div><div className="pstat-lbl">Total spend</div></div>
         <div className="pstat" style={{background:'rgba(245,184,0,.1)', padding: '14px'}}>
-          <div className="pstat-val m-yellow">{d.rating}</div>
+          <div className="pstat-val m-yellow">{d.rating || '—'}</div>
           <div className="pstat-lbl" style={{color:'var(--yellow-dark)'}}>Avg rating</div>
         </div>
       </div>
-      <div className="section-label">Saved locations ({d.locs.length})</div>
-      {d.locs.map(([label, addr, uses, badge]) => (
-        <div className="loc-row" key={label}>
-          <div style={{display:'flex',alignItems:'center',gap:10}}>
-            <LocIcon name={label} />
-            <div><div className="loc-name">{label}</div><div className="loc-addr">{addr}</div></div>
-          </div>
-          <span className={`badge ${badge}`}>{uses} uses</span>
-        </div>
-      ))}
+      <div className="section-label">Account details</div>
+      <div style={{ fontSize:12, color:'var(--text-sec)', background:'var(--surface)', padding:12, borderRadius:8 }}>
+        Joined: {new Date(d.created_at).toLocaleDateString()}
+      </div>
     </div>
   )
 }
 
 export default function Customers() {
-  const [selected, setSelected] = useState('ahmad')
-  const [search, setSearch]     = useState('')
-  const [filter, setFilter]     = useState('All customers')
+  const [customers, setCustomers] = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [selectedId, setSelected] = useState(null)
+  const [search, setSearch]       = useState('')
+  const [filter, setFilter]       = useState('All customers')
 
-  const filtered = CUSTOMER_LIST.filter(c => {
+  useEffect(() => {
+    async function fetchCustomers() {
+      const { data } = await supabase
+        .from('customers')
+        .select('*')
+        .order('full_name')
+      if (data) {
+        setCustomers(data)
+        if (data.length > 0) setSelected(data[0].id)
+      }
+      setLoading(false)
+    }
+    fetchCustomers()
+  }, [])
+
+  const filtered = customers.filter(c => {
     const q = search.toLowerCase()
-    const matchSearch = !q || c.name.toLowerCase().includes(q) || c.phone.includes(q)
+    const matchSearch = !q || c.full_name.toLowerCase().includes(q) || c.phone.includes(q)
     const matchFilter =
       filter === 'All customers' ||
-      (filter === 'VIP'     && c.badgeText === 'VIP') ||
-      (filter === 'Blocked' && c.badgeText === 'Blocked')
+      (filter === 'VIP'     && c.status === 'vip') ||
+      (filter === 'Blocked' && c.status === 'blocked')
     return matchSearch && matchFilter
   })
+
+  const selectedCustomer = customers.find(c => c.id === selectedId)
 
   return (
     <div>
@@ -137,36 +153,43 @@ export default function Customers() {
       <div className="grid-2 grid-2-3">
         <div className="table-wrap">
           <div className="table-head" style={{gridTemplateColumns:'1fr 55px 65px'}}>Customer<span>Trips</span><span>Status</span></div>
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div style={{padding:40, textAlign:'center'}}>Loading...</div>
+          ) : filtered.length === 0 ? (
             <div style={{padding:'20px 16px',textAlign:'center',fontSize:13,color:'var(--text-ter)'}}>
               No customers match your search.
             </div>
-          ) : filtered.map(c => (
-            <div
-              className="table-row"
-              key={c.id}
-              style={{
-                gridTemplateColumns:'1fr 55px 65px',
-                padding: '16px 20px',
-                background: selected === c.id ? 'rgba(245,184,0,.08)' : undefined,
-                borderLeft: selected === c.id ? '3px solid var(--yellow)' : '3px solid transparent',
-              }}
-              onClick={() => setSelected(c.id)}
-            >
-              <div style={{display:'flex',alignItems:'center',gap:12}}>
-                <div className={`av ${c.cls}`} style={{width:32,height:32,fontSize:11}}>{c.init}</div>
-                <div>
-                  <div style={{fontSize:14,fontWeight:600,color:'var(--text-pri)'}}>{c.name}</div>
-                  <div style={{fontSize:12,color:'var(--text-ter)'}}>{c.phone}</div>
+          ) : filtered.map(c => {
+              const badge = c.status === 'vip' ? 'b-yellow' : c.status === 'blocked' ? 'b-red' : 'b-gray'
+              return (
+                <div
+                  className="table-row"
+                  key={c.id}
+                  style={{
+                    gridTemplateColumns:'1fr 55px 65px',
+                    padding: '16px 20px',
+                    background: selectedId === c.id ? 'rgba(245,184,0,.08)' : undefined,
+                    borderLeft: selectedId === c.id ? '3px solid var(--yellow)' : '3px solid transparent',
+                  }}
+                  onClick={() => setSelected(c.id)}
+                >
+                  <div style={{display:'flex',alignItems:'center',gap:12}}>
+                    <div className="av av-y" style={{width:32,height:32,fontSize:11}}>{c.full_name[0]}</div>
+                    <div>
+                      <div style={{fontSize:14,fontWeight:600,color:'var(--text-pri)'}}>{c.full_name}</div>
+                      <div style={{fontSize:12,color:'var(--text-ter)'}}>{c.phone}</div>
+                    </div>
+                  </div>
+                  <span style={{fontSize:15,fontWeight:700}}>{c.total_trips || 0}</span>
+                  <span className={`badge ${badge}`} style={{padding:'4px 10px',fontSize:'10px', textTransform:'uppercase'}}>{c.status}</span>
                 </div>
-              </div>
-              <span style={{fontSize:15,fontWeight:700}}>{c.trips}</span>
-              <span className={`badge ${c.badge}`} style={{padding:'4px 10px',fontSize:'10px'}}>{c.badgeText}</span>
-            </div>
-          ))}
+              )
+            }
+          )}
         </div>
-        <CustomerDetail id={selected} />
+        <CustomerDetail customer={selectedCustomer} />
       </div>
     </div>
   )
 }
+
