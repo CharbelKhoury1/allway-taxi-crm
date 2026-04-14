@@ -35,6 +35,7 @@ export default async function handler(req, res) {
 
   const {
     customer_phone,
+    phone_number,
     pickup_address,
     dropoff_address,
     pickup_lat  = null,
@@ -44,12 +45,17 @@ export default async function handler(req, res) {
     notes       = null,
   } = req.body ?? {}
 
-  if (!customer_phone)  return res.status(400).json({ error: 'customer_phone is required' })
+  const phone = customer_phone || phone_number
+
+
+  if (!phone)  return res.status(400).json({ error: 'customer_phone (or phone_number) is required' })
+
   if (!pickup_address)  return res.status(400).json({ error: 'pickup_address is required' })
   if (!dropoff_address) return res.status(400).json({ error: 'dropoff_address is required' })
 
   // ── Resolve or Create Customer ──────────────────────────────────────────
-  const digits = String(customer_phone).replace(/\D/g, '')
+  const digits = String(phone).replace(/\D/g, '')
+
   const { data: customers } = await supabaseAdmin
     .from('customers')
     .select('id, full_name, status')

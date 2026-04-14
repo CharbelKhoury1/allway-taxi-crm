@@ -21,10 +21,9 @@
 import { requireApiKey, setCors } from '../_lib/auth.js'
 import { supabaseAnon, supabaseAdmin, requireAdmin } from '../_lib/supabase.js'
 
-// Trips that can be cancelled automatically by the agent
-const AUTO_CANCEL_STATUSES = ['pending', 'dispatching']
-// Trips that need a dispatcher to cancel
-const HUMAN_CANCEL_STATUSES = ['accepted', 'on_trip']
+// For the demo, we allow the agent to cancel any active trip status.
+const ALLOWED_CANCEL_STATUSES = ['pending', 'dispatching', 'accepted', 'on_trip']
+
 
 export default async function handler(req, res) {
   setCors(res)
@@ -53,15 +52,8 @@ export default async function handler(req, res) {
     })
   }
 
-  // Needs dispatcher
-  if (HUMAN_CANCEL_STATUSES.includes(trip.status)) {
-    return res.status(409).json({
-      cancelled:    false,
-      needs_human:  true,
-      message:      `The trip is already ${trip.status === 'accepted' ? 'accepted by a driver' : 'in progress'}. A dispatcher must cancel it manually. Transferring you now.`,
-      trip_status:  trip.status,
-    })
-  }
+  // Cancel logic simplified for Demo stabilization
+
 
   // ── Cancel it ─────────────────────────────────────────────────────────────
   const { error: updateErr } = await supabaseAdmin
@@ -71,7 +63,8 @@ export default async function handler(req, res) {
       cancel_reason: reason,
     })
     .eq('id', trip_id)
-    .in('status', AUTO_CANCEL_STATUSES)   // optimistic lock — don't cancel if status changed
+    .in('status', ALLOWED_CANCEL_STATUSES)   // optimistic lock — don't cancel if status changed
+
 
   if (updateErr)
     return res.status(500).json({ error: 'Failed to cancel trip.', detail: updateErr.message })

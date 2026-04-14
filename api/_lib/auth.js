@@ -14,9 +14,20 @@ export function requireApiKey(req, res) {
     res.status(500).json({ error: 'AGENT_API_SECRET not configured on server.' })
     return false
   }
-  const provided = req.headers['x-api-key']
+
+  // Support both 'Authorization: Bearer <token>' and 'x-api-key: <token>'
+  const authHeader = req.headers['authorization']
+  const tokenHeader = req.headers['x-api-key']
+  
+  let provided = null
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    provided = authHeader.substring(7)
+  } else if (tokenHeader) {
+    provided = tokenHeader
+  }
+
   if (!provided || provided !== configured) {
-    res.status(401).json({ error: 'Invalid or missing x-api-key header.' })
+    res.status(401).json({ error: 'Invalid or missing Authorization token.' })
     return false
   }
   return true
@@ -26,5 +37,6 @@ export function requireApiKey(req, res) {
 export function setCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, Authorization')
 }
+

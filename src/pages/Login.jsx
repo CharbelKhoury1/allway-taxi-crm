@@ -31,7 +31,7 @@ export default function Login({ onLogin }) {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <div className="sb-logo" style={{ width: 48, height: 48, fontSize: 24, marginBottom: 16 }}>A</div>
+          <img src="/allway-logo.ico" alt="Allway Taxi" style={{ width: 72, height: 72, objectFit: 'contain', marginBottom: 16 }} />
           <h1>Allway Taxi</h1>
           <p>Operations Control Center</p>
         </div>

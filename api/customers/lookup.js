@@ -30,8 +30,8 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
 
-  const raw = req.query.phone
-  if (!raw) return res.status(400).json({ error: 'phone query parameter is required' })
+  const raw = req.query.phone || req.query.phone_number
+  if (!raw) return res.status(400).json({ error: 'phone (or phone_number) query parameter is required' })
 
   // Normalise: keep digits only, then suffix-match
   const digits = raw.replace(/\D/g, '')
