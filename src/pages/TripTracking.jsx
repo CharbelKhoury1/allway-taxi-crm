@@ -467,6 +467,7 @@ export default function TripTracking({ tripId }) {
               <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35 }}>{trip?.dropoff_address ?? '—'}</div>
             </div>
           </div>
+          </div>
         </div>
         </>
       )}
