@@ -33,8 +33,13 @@ export default async function handler(req, res) {
   if (!requireAdmin(res)) return
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  let body = req.body
+  if (typeof body === 'string' && body.startsWith('{')) {
+    try { body = JSON.parse(body) } catch(e) { console.error('JSON parse fail:', e) }
+  }
+
   // Merge body and query to handle any way the agent platform sends data
-  const params = { ...req.query, ...req.body }
+  const params = { ...req.query, ...(typeof body === 'object' ? body : {}) }
 
   const {
     customer_phone,
@@ -50,7 +55,7 @@ export default async function handler(req, res) {
     notes       = null,
   } = params
 
-  const phone = customer_phone || phone_number || p1 || p2
+  const phone = customer_phone || phone_number || p1 || p2 || params.phone_number
 
 
   if (!phone)  return res.status(400).json({ error: 'customer_phone (or phone_number) is required' })
