@@ -50,6 +50,9 @@ export default async function handler(req, res) {
     phone_number,
     phone: p1,
     customerPhone: p2,
+    customer_name,
+    name: n1,
+    fullName: n2,
     pickup_address,
     dropoff_address,
     pickup_lat  = null,
@@ -60,6 +63,7 @@ export default async function handler(req, res) {
   } = params
 
   const phone = customer_phone || phone_number || p1 || p2
+  const resolvedName = customer_name || n1 || n2 || 'WhatsApp Customer'
 
 
   if (!phone)  return res.status(400).json({ error: 'customer_phone (or phone_number) is required' })
@@ -84,7 +88,7 @@ export default async function handler(req, res) {
       .from('customers')
       .insert({
         phone:     digits,
-        full_name: 'WhatsApp Customer',
+        full_name: resolvedName,
         status:    'regular'
       })
       .select()
