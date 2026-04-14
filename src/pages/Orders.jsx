@@ -65,10 +65,11 @@ export default function Orders() {
     const route = `${o.pickup_address} ${o.dropoff_address}`.toLowerCase()
     const matchSearch = !q || name.includes(q) || route.includes(q) || o.id.includes(q)
     
-    const uiStatus = o.status === 'completed' ? 'Completed' : 
+    const uiStatus = o.status === 'completed' ? 'Completed' :
                      o.status === 'cancelled' ? 'Cancelled' :
                      o.status === 'requested' ? 'Requested' :
-                     o.status === 'dispatching' ? 'Dispatching' : 'In progress'
+                     o.status === 'dispatching' ? 'Dispatching' :
+                     o.status === 'no_driver' ? 'No Driver' : 'In progress'
                      
     const matchStatus = status === 'All statuses' || uiStatus === status
     return matchSearch && matchStatus
@@ -85,16 +86,22 @@ export default function Orders() {
         />
         <select value={status} onChange={e => setStatus(e.target.value)}>
           <option>All statuses</option>
+          <option>Requested</option>
+          <option>Dispatching</option>
           <option>In progress</option>
           <option>Completed</option>
           <option>Cancelled</option>
-          <option>No driver</option>
+          <option>No Driver</option>
         </select>
         <select value={period} onChange={e => setPeriod(e.target.value)}>
           <option>Today</option>
           <option>All time</option>
         </select>
-        <button className="btn" onClick={() => exportCSV(filtered)}>Export CSV</button>
+        <button className="btn" onClick={() => exportCSV(filtered)}>CSV</button>
+        <button className="btn btn-primary" onClick={() => {
+          localStorage.setItem('currentPage', 'orders');
+          window.dispatchEvent(new CustomEvent('open-new-order'));
+        }}>➕ NEW ORDER</button>
       </div>
 
       <div className="metrics metrics-4b" style={{ marginBottom:18 }}>
@@ -122,7 +129,8 @@ export default function Orders() {
                            o.status === 'dispatching' ? 'Dispatching' : 'In progress'
           const badge = o.status === 'completed' ? 'b-green' :
                         o.status === 'cancelled' ? 'b-red' :
-                        o.status === 'requested' || o.status === 'no_driver' ? 'b-yellow' : 'b-amber'
+                        o.status === 'requested' || o.status === 'no_driver' ? 'b-yellow' :
+                        o.status === 'dispatching' ? 'b-amber' : 'b-amber'
 
           return (
             <div

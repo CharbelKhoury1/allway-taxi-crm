@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS trips (
   fare_lbp         numeric(12,0),
   distance_km      numeric(6,2),
   duration_min     int,
+  notes            text,
   promo_code_id    uuid REFERENCES promo_codes(id) ON DELETE SET NULL,
   driver_rating    int CHECK (driver_rating BETWEEN 1 AND 5),
   customer_rating  int CHECK (customer_rating BETWEEN 1 AND 5),

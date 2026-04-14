@@ -118,7 +118,7 @@ export default async function handler(req, res) {
     dropoff_lng:     dropoff_lng != null ? Number(dropoff_lng) : null,
     status:          'pending',
     requested_at:    new Date().toISOString(),
-    ...(notes ? { cancel_reason: null } : {}),  // notes stored separately if schema supports it
+    notes:           notes || null
   }
 
   const { data: newTrip, error: insertErr } = await supabaseAdmin

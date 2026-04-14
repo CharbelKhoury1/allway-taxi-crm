@@ -141,6 +141,24 @@ export default function App() {
     return () => cancelAnimationFrame(raf)
   }, [])
 
+  // Listen for global 'open-new-order' events from other components (like Orders page)
+  useEffect(() => {
+    const handleOpen = async () => {
+      setPage('orders')
+      // Pre-fetch data for the dispatch modal
+      const [drvRes, custRes] = await Promise.all([
+        supabase.from('drivers').select('id, full_name, plate').eq('online', true).eq('status', 'available').order('full_name'),
+        supabase.from('customers').select('id, full_name, phone').order('full_name')
+      ])
+      setAvailableDrivers(drvRes.data || [])
+      setCustomers(custRes.data || [])
+      setIsNewCust(false)
+      setShowModal(true)
+    }
+    window.addEventListener('open-new-order', handleOpen)
+    return () => window.removeEventListener('open-new-order', handleOpen)
+  }, [])
+
   async function handleLogout() {
     await supabase.auth.signOut()
     setPage('dash')
@@ -227,6 +245,7 @@ export default function App() {
                       customer_id:     custId,
                       pickup_address:  fd.get('p'),
                       dropoff_address: fd.get('d'),
+                      fare_usd:        parseFloat(fd.get('fare')) || 0,
                       driver_id:       driverId,
                       status:          driverId ? 'dispatching' : 'requested',
                       requested_at:    new Date().toISOString(),
@@ -265,7 +284,16 @@ export default function App() {
                       </div>
                     )}
 
-                    <div className="f-row"><label>Pickup Address</label><input required name="p" placeholder="eg Mina Jbeil" style={{marginTop:4}} /></div>
+                    <div className="f-row" style={{display:'flex', gap:10}}>
+                      <div style={{flex:1}}>
+                        <label>Pickup Address</label>
+                        <input required name="p" placeholder="eg Mina" style={{marginTop:4}} />
+                      </div>
+                      <div style={{width:100}}>
+                        <label>Est. Fare ($)</label>
+                        <input required name="fare" type="number" defaultValue="15" style={{marginTop:4}} />
+                      </div>
+                    </div>
                     <div className="f-row"><label>Dropoff Address</label><input required name="d" placeholder="eg City Centre, Beirut" style={{marginTop:4}} /></div>
                     
                     <div className="f-row">
