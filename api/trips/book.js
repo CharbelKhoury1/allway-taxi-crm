@@ -58,7 +58,14 @@ export default async function handler(req, res) {
   const phone = customer_phone || phone_number || p1 || p2 || params.phone_number
 
 
-  if (!phone)  return res.status(400).json({ error: 'customer_phone (or phone_number) is required' })
+  if (!phone) {
+    return res.status(400).json({ 
+      error: 'customer_phone (or phone_number) is required', 
+      received_params: params,
+      received_body_type: typeof body,
+      received_body: body
+    })
+  }
 
   if (!pickup_address)  return res.status(400).json({ error: 'pickup_address is required' })
   if (!dropoff_address) return res.status(400).json({ error: 'dropoff_address is required' })
