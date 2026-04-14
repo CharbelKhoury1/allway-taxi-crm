@@ -38,8 +38,12 @@ export default async function handler(req, res) {
     try { body = JSON.parse(body) } catch(e) { console.error('JSON parse fail:', e) }
   }
 
-  // Merge body and query to handle any way the agent platform sends data
-  const params = { ...req.query, ...(typeof body === 'object' ? body : {}) }
+  // Merge body and query
+  let params = { ...req.query, ...(typeof body === 'object' ? body : {}) }
+
+  // Special case: some agent platforms wrap the payload in tool_payload or payload
+  if (params.tool_payload) params = { ...params, ...params.tool_payload }
+  if (params.payload)      params = { ...params, ...params.payload }
 
   const {
     customer_phone,
@@ -55,17 +59,10 @@ export default async function handler(req, res) {
     notes       = null,
   } = params
 
-  const phone = customer_phone || phone_number || p1 || p2 || params.phone_number
+  const phone = customer_phone || phone_number || p1 || p2
 
 
-  if (!phone) {
-    return res.status(400).json({ 
-      error: 'customer_phone (or phone_number) is required', 
-      received_params: params,
-      received_body_type: typeof body,
-      received_body: body
-    })
-  }
+  if (!phone)  return res.status(400).json({ error: 'customer_phone (or phone_number) is required' })
 
   if (!pickup_address)  return res.status(400).json({ error: 'pickup_address is required' })
   if (!dropoff_address) return res.status(400).json({ error: 'dropoff_address is required' })
