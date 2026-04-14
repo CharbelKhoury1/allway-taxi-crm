@@ -17,7 +17,8 @@
  */
 
 import { requireApiKey, setCors } from '../_lib/auth.js'
-import { supabaseAnon }           from '../_lib/supabase.js'
+import { supabaseAdmin, requireAdmin }           from '../_lib/supabase.js'
+
 
 const ACTIVE_STATUSES = ['pending', 'dispatching', 'accepted', 'on_trip']
 
@@ -25,7 +26,9 @@ export default async function handler(req, res) {
   setCors(res)
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (!requireApiKey(req, res)) return
+  if (!requireAdmin(res)) return
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+
 
   const raw = req.query.phone
   if (!raw) return res.status(400).json({ error: 'phone query parameter is required' })
@@ -35,11 +38,12 @@ export default async function handler(req, res) {
   if (digits.length < 7) return res.status(400).json({ error: 'Phone number too short' })
 
   // ── Customer lookup ───────────────────────────────────────────────────────
-  const { data: customers } = await supabaseAnon
+  const { data: customers } = await supabaseAdmin
     .from('customers')
     .select('id, full_name, phone, status, total_trips, total_spend, avg_rating, wa_thread_id')
     .ilike('phone', `%${digits.slice(-8)}`)   // last 8 digits covers local + intl formats
     .limit(1)
+
 
   const customer = customers?.[0]
   if (!customer) {
@@ -50,13 +54,14 @@ export default async function handler(req, res) {
   }
 
   // ── Active trip ───────────────────────────────────────────────────────────
-  const { data: trips } = await supabaseAnon
+  const { data: trips } = await supabaseAdmin
     .from('trips')
     .select('id, status, pickup_address, dropoff_address, driver_id, requested_at')
     .eq('customer_id', customer.id)
     .in('status', ACTIVE_STATUSES)
     .order('requested_at', { ascending: false })
     .limit(1)
+
 
   const active_trip = trips?.[0] ?? null
   const baseUrl     = process.env.APP_BASE_URL || `https://${req.headers.host}`
