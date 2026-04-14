@@ -19,7 +19,7 @@
  */
 
 import { requireApiKey, setCors } from '../_lib/auth.js'
-import { supabaseAnon, supabaseAdmin, requireAdmin } from '../_lib/supabase.js'
+import { supabaseAdmin, requireAdmin } from '../_lib/supabase.js'
 
 // For the demo, we allow the agent to cancel any active trip status.
 const ALLOWED_CANCEL_STATUSES = ['pending', 'dispatching', 'accepted', 'on_trip']
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
   if (!trip_id) return res.status(400).json({ error: 'trip_id is required' })
 
   // ── Fetch current trip ────────────────────────────────────────────────────
-  const { data: trip } = await supabaseAnon
+  const { data: trip } = await supabaseAdmin
     .from('trips')
     .select('id, status, customer_id, driver_id')
     .eq('id', trip_id)

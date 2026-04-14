@@ -13,19 +13,20 @@
  */
 
 import { requireApiKey, setCors } from '../_lib/auth.js'
-import { supabaseAnon }           from '../_lib/supabase.js'
+import { supabaseAdmin, requireAdmin } from '../_lib/supabase.js'
 
 export default async function handler(req, res) {
   setCors(res)
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (!requireApiKey(req, res)) return
+  if (!requireAdmin(res)) return
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
   const { code, customer_phone } = req.query
   if (!code) return res.status(400).json({ error: 'code query parameter is required' })
 
   // ── Fetch promo code ──────────────────────────────────────────────────────
-  const { data: promo } = await supabaseAnon
+  const { data: promo } = await supabaseAdmin
     .from('promo_codes')
     .select('id, code, description, discount_type, discount_value, status, use_count, max_uses, expires_at')
     .ilike('code', code.trim())
@@ -65,7 +66,7 @@ export default async function handler(req, res) {
   // ── Per-customer duplicate check ──────────────────────────────────────────
   if (customer_phone) {
     const digits = String(customer_phone).replace(/\D/g, '')
-    const { data: customers } = await supabaseAnon
+    const { data: customers } = await supabaseAdmin
       .from('customers')
       .select('id')
       .ilike('phone', `%${digits.slice(-8)}`)
@@ -73,7 +74,7 @@ export default async function handler(req, res) {
 
     const customerId = customers?.[0]?.id
     if (customerId) {
-      const { data: used } = await supabaseAnon
+      const { data: used } = await supabaseAdmin
         .from('promo_code_usage')
         .select('id')
         .eq('promo_code_id', promo.id)

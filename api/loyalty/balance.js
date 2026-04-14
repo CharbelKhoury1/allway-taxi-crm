@@ -14,7 +14,7 @@
  */
 
 import { requireApiKey, setCors } from '../_lib/auth.js'
-import { supabaseAnon }           from '../_lib/supabase.js'
+import { supabaseAdmin, requireAdmin } from '../_lib/supabase.js'
 
 // Points needed to reach the next tier
 const NEXT_TIER = {
@@ -35,6 +35,7 @@ export default async function handler(req, res) {
   setCors(res)
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (!requireApiKey(req, res)) return
+  if (!requireAdmin(res)) return
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
   const { phone } = req.query
@@ -42,7 +43,7 @@ export default async function handler(req, res) {
 
   // ── Resolve customer ──────────────────────────────────────────────────────
   const digits = String(phone).replace(/\D/g, '')
-  const { data: customers } = await supabaseAnon
+  const { data: customers } = await supabaseAdmin
     .from('customers')
     .select('id, full_name')
     .ilike('phone', `%${digits.slice(-8)}`)
@@ -57,7 +58,7 @@ export default async function handler(req, res) {
   }
 
   // ── Loyalty account ───────────────────────────────────────────────────────
-  const { data: account } = await supabaseAnon
+  const { data: account } = await supabaseAdmin
     .from('loyalty_accounts')
     .select('tier, points_balance, total_points_earned, enrolled_at')
     .eq('customer_id', customer.id)
@@ -77,12 +78,12 @@ export default async function handler(req, res) {
   const pointsToNext  = nextThreshold ? nextThreshold - points : null
 
   // ── Recent transactions (last 5) ──────────────────────────────────────────
-  const { data: recent } = await supabaseAnon
+  const { data: recent } = await supabaseAdmin
     .from('loyalty_transactions')
     .select('type, points, description, created_at')
     .eq('account_id', (
       // We need the account ID — fetch it
-      await supabaseAnon
+      await supabaseAdmin
         .from('loyalty_accounts')
         .select('id')
         .eq('customer_id', customer.id)

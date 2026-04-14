@@ -12,8 +12,8 @@
  *   - Customer tracking page  (initial data load — uses Supabase directly after)
  */
 
-import { requireApiKey, setCors } from '../_lib/auth.js'
-import { supabaseAnon }           from '../_lib/supabase.js'
+import { requireApiKey, setCors }        from '../_lib/auth.js'
+import { supabaseAdmin, requireAdmin }   from '../_lib/supabase.js'
 
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371, r = d => d * Math.PI / 180
@@ -28,13 +28,14 @@ export default async function handler(req, res) {
   setCors(res)
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (!requireApiKey(req, res)) return
+  if (!requireAdmin(res)) return
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
   const { trip_id } = req.query
   if (!trip_id) return res.status(400).json({ error: 'trip_id is required' })
 
   // ── Trip ──────────────────────────────────────────────────────────────────
-  const { data: trip, error: tripErr } = await supabaseAnon
+  const { data: trip, error: tripErr } = await supabaseAdmin
     .from('trips')
     .select(`
       id, status,
@@ -55,7 +56,7 @@ export default async function handler(req, res) {
   let eta_min = null
 
   if (trip.driver_id) {
-    const { data: drv } = await supabaseAnon
+    const { data: drv } = await supabaseAdmin
       .from('drivers')
       .select('id, full_name, plate, car_model, rating, lat, lng, last_seen, online, status')
       .eq('id', trip.driver_id)
