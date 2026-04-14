@@ -6,20 +6,30 @@ const PING_INTERVAL = 25_000
 const STALE_LIMIT   = 45_000
 
 // ─── GPS hook ────────────────────────────────────────────────
-function useGPS({ active, onPosition }) {
+function useGPS({ active, onPosition, onError }) {
   const watchRef     = useRef(null)
   const lastUpdateAt = useRef(null)
   const staleTimer   = useRef(null)
 
   const startWatch = useCallback(() => {
-    if (!('geolocation' in navigator)) return
+    if (!('geolocation' in navigator)) {
+      onError?.('not_supported')
+      return
+    }
     if (watchRef.current !== null) navigator.geolocation.clearWatch(watchRef.current)
     watchRef.current = navigator.geolocation.watchPosition(
-      pos => { lastUpdateAt.current = Date.now(); onPosition(pos.coords.latitude, pos.coords.longitude) },
-      err => { if (err.code !== 1) setTimeout(startWatch, 3000) },
+      pos => { lastUpdateAt.current = Date.now(); onError?.(null); onPosition(pos.coords.latitude, pos.coords.longitude) },
+      err => {
+        if (err.code === 1) {
+          onError?.('permission_denied')
+        } else {
+          onError?.('unavailable')
+          setTimeout(startWatch, 3000)
+        }
+      },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     )
-  }, [onPosition])
+  }, [onPosition, onError])
 
   useEffect(() => {
     if (!active) return
@@ -116,55 +126,90 @@ function WeeklyEarningsChart({ driverId }) {
 }
 
 // ─── Online ring status ───────────────────────────────────────
-function StatusRing({ online, onToggle, disabled }) {
+function StatusRing({ online, gpsActive, onToggle, disabled }) {
+  const acquiring = online && !gpsActive
+  const circumference = 2 * Math.PI * 82
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
       <div style={{ position: 'relative', width: 180, height: 180 }}>
         {/* Animated ring */}
-        <svg width="180" height="180" style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
-          <circle cx="90" cy="90" r="82" fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="6"/>
-          {online && (
-            <circle cx="90" cy="90" r="82" fill="none"
-              stroke="url(#ring-grad)" strokeWidth="6"
-              strokeDasharray={`${2 * Math.PI * 82}`}
-              strokeDashoffset="0"
-              strokeLinecap="round"
-              style={{ transition: 'stroke-dashoffset 1s ease' }}
-            />
-          )}
+        <svg width="180" height="180" style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)', overflow: 'visible' }}>
           <defs>
             <linearGradient id="ring-grad" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#5DCAA5"/>
               <stop offset="100%" stopColor="#F5B800"/>
             </linearGradient>
           </defs>
+          {/* Track */}
+          <circle cx="90" cy="90" r="82" fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="6"/>
+
+          {/* Acquiring: spinning dashed arc */}
+          {acquiring && (
+            <circle cx="90" cy="90" r="82" fill="none"
+              stroke="#F5B800" strokeWidth="6"
+              strokeDasharray={`${circumference * 0.25} ${circumference * 0.75}`}
+              strokeLinecap="round"
+              style={{ animation: 'ringSpinAcquiring 1.1s linear infinite', transformOrigin: '90px 90px' }}
+            />
+          )}
+
+          {/* Active: full gradient ring */}
+          {online && gpsActive && (
+            <circle cx="90" cy="90" r="82" fill="none"
+              stroke="url(#ring-grad)" strokeWidth="6"
+              strokeDasharray={`${circumference}`}
+              strokeDashoffset="0"
+              strokeLinecap="round"
+              style={{ transition: 'stroke-dashoffset 1s ease' }}
+            />
+          )}
         </svg>
+
         <button
           onClick={onToggle}
           disabled={disabled}
           style={{
             position: 'absolute', inset: 14,
             borderRadius: '50%', border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
-            background: online
+            background: acquiring
+              ? 'radial-gradient(circle at 38% 32%, #4A4230, #1E1E2A)'
+              : online
               ? 'radial-gradient(circle at 38% 32%, #7EDFC0, #2A9E78)'
               : 'radial-gradient(circle at 38% 32%, #3A3A4A, #1E1E2A)',
-            boxShadow: online
-              ? '0 0 0 0 rgba(93,202,165,.0), inset 0 -4px 12px rgba(0,0,0,.3), 0 8px 32px rgba(93,202,165,.25)'
+            boxShadow: acquiring
+              ? 'inset 0 -4px 12px rgba(0,0,0,.3), 0 8px 28px rgba(245,184,0,.18)'
+              : online
+              ? 'inset 0 -4px 12px rgba(0,0,0,.3), 0 8px 32px rgba(93,202,165,.25)'
               : 'inset 0 -4px 12px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.4)',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             gap: 2, transition: 'all .4s cubic-bezier(.34,1.56,.64,1)',
             opacity: disabled ? 0.5 : 1,
           }}
         >
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={online ? '#fff' : 'rgba(255,255,255,.4)'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
-            <line x1="12" y1="2" x2="12" y2="12"/>
-          </svg>
-          <span style={{ fontSize: 11, fontWeight: 900, color: online ? '#fff' : 'rgba(255,255,255,.4)', letterSpacing: 2, marginTop: 2 }}>{online ? 'ONLINE' : 'OFFLINE'}</span>
+          {acquiring ? (
+            <>
+              {/* Spinning location pin during acquire */}
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#F5B800" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                style={{ animation: 'acquirePulse 1.4s ease-in-out infinite' }}>
+                <circle cx="12" cy="10" r="3"/>
+                <path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 6.9 8 11.7z"/>
+              </svg>
+              <span style={{ fontSize: 10, fontWeight: 900, color: '#F5B800', letterSpacing: 1.5, marginTop: 2 }}>LOCATING…</span>
+            </>
+          ) : (
+            <>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={online ? '#fff' : 'rgba(255,255,255,.4)'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+                <line x1="12" y1="2" x2="12" y2="12"/>
+              </svg>
+              <span style={{ fontSize: 11, fontWeight: 900, color: online ? '#fff' : 'rgba(255,255,255,.4)', letterSpacing: 2, marginTop: 2 }}>{online ? 'ONLINE' : 'OFFLINE'}</span>
+            </>
+          )}
         </button>
       </div>
-      <span style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', fontWeight: 500 }}>
-        {disabled ? 'Complete your trip first' : online ? 'Tap to go offline' : 'Tap to start your shift'}
+      <span style={{ fontSize: 13, color: acquiring ? '#F5B800' : 'rgba(255,255,255,.3)', fontWeight: 500, transition: 'color .3s' }}>
+        {disabled ? 'Complete your trip first' : acquiring ? 'Turning on location…' : online ? 'Tap to go offline' : 'Tap to start your shift'}
       </span>
     </div>
   )
@@ -327,9 +372,17 @@ function ActiveTrip({ trip, onComplete }) {
 }
 
 // ─── Home Tab ─────────────────────────────────────────────────
-function HomeTab({ driver, online, gpsActive, onToggle, activeTrip, onComplete, todayStats, weekStats, shiftTime, coords }) {
+function HomeTab({ driver, online, gpsActive, gpsError, onToggle, activeTrip, onComplete, todayStats, weekStats, shiftTime, coords }) {
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+
+  const gpsErrorMsg = gpsError === 'permission_denied'
+    ? 'Location permission denied — open Settings and allow location access'
+    : gpsError === 'not_supported'
+    ? 'GPS not supported on this device'
+    : gpsError === 'unavailable'
+    ? 'Location signal unavailable — retrying…'
+    : null
 
   return (
     <div style={{ paddingBottom: 8 }}>
@@ -353,14 +406,33 @@ function HomeTab({ driver, online, gpsActive, onToggle, activeTrip, onComplete, 
 
         {/* ── Status ring + GPS pill ─── */}
         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:24 }}>
-          <StatusRing online={online} onToggle={onToggle} disabled={!!activeTrip}/>
-          {online && (
-            <div style={{ marginTop:16, display:'flex', alignItems:'center', gap:8, padding:'10px 18px', borderRadius:50, border:`1px solid ${gpsActive ? 'rgba(245,184,0,.3)' : 'rgba(255,255,255,.1)'}`, background: gpsActive ? 'rgba(245,184,0,.08)' : 'rgba(255,255,255,.04)' }}>
-              <div style={{ width:7, height:7, borderRadius:'50%', background:gpsActive?'#F5B800':'#555', animation:gpsActive?'pulse 2s infinite':'none', boxShadow:gpsActive?'0 0 8px #F5B800':'none' }}/>
-              <span style={{ fontSize:12, fontWeight:700, color:gpsActive?'#F5B800':'rgba(255,255,255,.3)' }}>{gpsActive?'GPS Active — Live tracking':'Acquiring signal…'}</span>
+          <StatusRing online={online} gpsActive={gpsActive} onToggle={onToggle} disabled={!!activeTrip}/>
+
+          {/* GPS error banner */}
+          {online && gpsErrorMsg && (
+            <div style={{ marginTop:14, display:'flex', alignItems:'center', gap:8, padding:'10px 16px', borderRadius:12, border:'1px solid rgba(240,149,149,.3)', background:'rgba(240,149,149,.08)', maxWidth:280, textAlign:'center', animation:'slideUp .3s ease-out' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F09595" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink:0 }}>
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <span style={{ fontSize:11, fontWeight:700, color:'#F09595', lineHeight:1.4 }}>{gpsErrorMsg}</span>
+            </div>
+          )}
+
+          {/* GPS active / acquiring pill */}
+          {online && !gpsError && (
+            <div style={{ marginTop:14, display:'flex', alignItems:'center', gap:8, padding:'10px 18px', borderRadius:50, border:`1px solid ${gpsActive ? 'rgba(93,202,165,.3)' : 'rgba(245,184,0,.25)'}`, background: gpsActive ? 'rgba(93,202,165,.08)' : 'rgba(245,184,0,.06)', transition:'all .4s ease' }}>
+              {gpsActive ? (
+                <div style={{ width:7, height:7, borderRadius:'50%', background:'#5DCAA5', animation:'pulse 2s infinite', boxShadow:'0 0 8px #5DCAA5' }}/>
+              ) : (
+                <div style={{ width:14, height:14, border:'2px solid rgba(245,184,0,.4)', borderTopColor:'#F5B800', borderRadius:'50%', animation:'spin .9s linear infinite', flexShrink:0 }}/>
+              )}
+              <span style={{ fontSize:12, fontWeight:700, color:gpsActive ? '#5DCAA5' : '#F5B800' }}>
+                {gpsActive ? 'GPS Active — Live tracking' : 'Acquiring GPS signal…'}
+              </span>
               {gpsActive && coords && <span style={{ fontSize:10, color:'rgba(255,255,255,.25)', fontFamily:'monospace' }}>{coords.lat.toFixed(4)}°N</span>}
             </div>
           )}
+
           {online && (
             <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:50, background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)' }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -433,14 +505,14 @@ function HomeTab({ driver, online, gpsActive, onToggle, activeTrip, onComplete, 
         <div style={{ background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.07)', borderRadius:18, padding:'16px' }}>
           {[
             { label:'Connection', val:'Supabase Realtime', status:'ok' },
-            { label:'GPS Signal', val:gpsActive ? 'Active & transmitting' : online ? 'Acquiring…' : 'Standby', status: gpsActive ? 'ok' : online ? 'warn' : 'off' },
+            { label:'GPS Signal', val: gpsError === 'permission_denied' ? 'Permission denied' : gpsError === 'unavailable' ? 'Signal unavailable' : gpsActive ? 'Active & transmitting' : online ? 'Acquiring…' : 'Standby', status: gpsError ? 'err' : gpsActive ? 'ok' : online ? 'warn' : 'off' },
             { label:'Wake Lock', val: online ? 'Screen protected' : 'Inactive', status: online ? 'ok' : 'off' },
           ].map((item, i) => (
             <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding: i>0 ? '12px 0 0' : '0', borderTop: i>0 ? '1px solid rgba(255,255,255,.06)' : 'none', marginTop: i>0 ? 12 : 0 }}>
               <span style={{ fontSize:12, color:'rgba(255,255,255,.4)', fontWeight:600 }}>{item.label}</span>
               <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                <div style={{ width:6, height:6, borderRadius:'50%', background: item.status==='ok'?'#5DCAA5':item.status==='warn'?'#F5B800':'rgba(255,255,255,.2)', animation: item.status==='ok'?'pulse 2s infinite':'none' }}/>
-                <span style={{ fontSize:11, color: item.status==='ok'?'#5DCAA5':item.status==='warn'?'#F5B800':'rgba(255,255,255,.3)', fontWeight:700 }}>{item.val}</span>
+                <div style={{ width:6, height:6, borderRadius:'50%', background: item.status==='ok'?'#5DCAA5':item.status==='warn'?'#F5B800':item.status==='err'?'#F09595':'rgba(255,255,255,.2)', animation: item.status==='ok'?'pulse 2s infinite':'none' }}/>
+                <span style={{ fontSize:11, color: item.status==='ok'?'#5DCAA5':item.status==='warn'?'#F5B800':item.status==='err'?'#F09595':'rgba(255,255,255,.3)', fontWeight:700 }}>{item.val}</span>
               </div>
             </div>
           ))}
@@ -690,6 +762,7 @@ export default function DriverApp() {
   const [tab, setTab]               = useState('home')
   const [online, setOnline]         = useState(false)
   const [gpsActive, setGpsActive]   = useState(false)
+  const [gpsError, setGpsError]     = useState(null)   // null | 'permission_denied' | 'unavailable' | 'not_supported'
   const [coords, setCoords]         = useState(null)
   const [activeTrip, setActiveTrip] = useState(null)
   const [pendingTrip, setPendingTrip] = useState(null)
@@ -710,11 +783,17 @@ export default function DriverApp() {
 
   const handlePosition = useCallback((lat, lng) => {
     if (!onlineRef.current) return   // driver went offline — discard stale GPS callback
-    setCoords({ lat, lng }); setGpsActive(true)
+    setCoords({ lat, lng }); setGpsActive(true); setGpsError(null)
     if (driver) pushLocation(driver.id, lat, lng)
   }, [driver])
 
-  useGPS({ active: online, onPosition: handlePosition })
+  const handleGpsError = useCallback((err) => {
+    if (!onlineRef.current) return
+    setGpsError(err)
+    if (err) setGpsActive(false)
+  }, [])
+
+  useGPS({ active: online, onPosition: handlePosition, onError: handleGpsError })
 
   // Fetch today + week stats
   useEffect(() => {
@@ -798,7 +877,7 @@ export default function DriverApp() {
     if (tripChannelRef.current) { supabase.removeChannel(tripChannelRef.current); tripChannelRef.current = null }
     saveSession(driver, false)   // refresh should stay offline
     // Flip UI immediately
-    setOnline(false); setGpsActive(false); setCoords(null); setActiveTrip(null); setPendingTrip(null)
+    setOnline(false); setGpsActive(false); setGpsError(null); setCoords(null); setActiveTrip(null); setPendingTrip(null)
     // Mark offline in Supabase. Coordinates are intentionally preserved so that
     // when the driver comes back online (manually or via admin toggle) their last
     // known position is immediately available and they reappear on the map.
@@ -911,6 +990,8 @@ export default function DriverApp() {
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
         @keyframes slideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
         @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes ringSpinAcquiring { to { transform: rotate(360deg) } }
+        @keyframes acquirePulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.18);opacity:.75} }
         .drv-input:focus { border-color:#F5B800!important; box-shadow:0 0 0 3px rgba(245,184,0,.15)!important; outline:none; }
         .tab-item { transition: all .2s ease; }
         .tab-item:active { transform:scale(.9); opacity:.7; }
@@ -936,7 +1017,7 @@ export default function DriverApp() {
           {tab === 'home' && (
             <div style={{ animation:'slideUp .35s ease-out' }}>
               <HomeTab
-                driver={driver} online={online} gpsActive={gpsActive}
+                driver={driver} online={online} gpsActive={gpsActive} gpsError={gpsError}
                 onToggle={online ? goOffline : goOnline}
                 activeTrip={activeTrip} onComplete={completeTrip}
                 todayStats={todayStats} weekStats={weekStats}

@@ -9,18 +9,32 @@ export default function Dashboard({ onNavigate }) {
   const [selected, setSelected] = useState(null)
 
   // ── Live driver locations ──────────────────────────────────────
+  // Drivers whose last_seen is older than this are considered stale/disconnected
+  const STALE_MS = 2 * 60 * 1000  // 2 minutes
+
   useEffect(() => {
-    // Initial fetch: all online drivers that have sent a location
+    // Initial fetch: online drivers with a fresh last_seen (within 2 minutes)
     async function fetchDrivers() {
+      const freshSince = new Date(Date.now() - STALE_MS).toISOString()
       const { data } = await supabase
         .from('drivers')
         .select('id, full_name, plate, car_model, status, online, lat, lng, last_seen')
         .eq('online', true)
+        .gte('last_seen', freshSince)
       if (data) {
         setDrivers(toMapDrivers(data))
       }
     }
     fetchDrivers()
+
+    // Periodic stale cleanup — evict drivers whose last_seen has gone stale
+    // (covers the case where a driver's app died without calling goOffline)
+    const staleCleanup = setInterval(() => {
+      setDrivers(prev => prev.filter(d => {
+        if (!d.last_seen) return false
+        return Date.now() - new Date(d.last_seen).getTime() < STALE_MS
+      }))
+    }, 30_000)
 
     // Real-time: any UPDATE on drivers table → refresh the map pin
     const channel = supabase
@@ -29,9 +43,10 @@ export default function Dashboard({ onNavigate }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'drivers' },
         ({ new: d }) => {
-          const isLive = d.online && d.lat != null && d.lng != null
+          const isRecent = d.last_seen && (Date.now() - new Date(d.last_seen).getTime()) < STALE_MS
+          const isLive = d.online && d.lat != null && d.lng != null && isRecent
           if (isLive) {
-            // Driver online with location → add or update marker immediately
+            // Driver online with fresh location → add or update marker immediately
             const mapped = toMapDriver(d)
             setDrivers(prev => {
               const exists = prev.some(x => x.id === d.id)
@@ -40,17 +55,21 @@ export default function Dashboard({ onNavigate }) {
                 : [...prev, mapped]
             })
             pushLog(`Driver ${d.full_name} — ${d.status.replace('_', ' ')} · ${d.lat?.toFixed(4)}°N`)
-          } else if (d.online === false || d.lat == null || d.lng == null) {
-            // Driver went offline or location was cleared → remove marker
+          } else {
+            // Driver went offline, location cleared, or last_seen is stale → remove marker
+            const wasShown = true  // may or may not be in state — filter handles it safely
             setDrivers(prev => prev.filter(x => x.id !== d.id))
-            if (d.online === false) pushLog(`Driver ${d.full_name} went offline`)
+            if (wasShown && d.online === false) pushLog(`Driver ${d.full_name} went offline`)
           }
         }
       )
       .subscribe()
 
-    return () => supabase.removeChannel(channel)
-  }, [])
+    return () => {
+      clearInterval(staleCleanup)
+      supabase.removeChannel(channel)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Live stats (trips + revenue) ───────────────────────────────
   useEffect(() => {

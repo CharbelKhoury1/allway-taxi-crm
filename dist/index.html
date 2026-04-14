@@ -22,14 +22,21 @@
         // Paint the canvas immediately — before ANY CSS loads
         document.documentElement.style.background = bg;
         document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+        
+        // Fix for "ghost" projects: Unregister any existing service workers from previous projects on this port
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(regs => {
+            for (let reg of regs) reg.unregister();
+          });
+        }
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-BH5XI4EU.js"></script>
+    <script type="module" crossorigin src="/assets/index-CATW3Xou.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/mapbox-DMSK92ac.js">
     <link rel="modulepreload" crossorigin href="/assets/supabase-XETuKJ8-.js">
     <link rel="stylesheet" crossorigin href="/assets/index-DrF98RSA.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
   </body>
 </html>
