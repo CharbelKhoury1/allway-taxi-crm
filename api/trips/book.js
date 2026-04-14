@@ -39,6 +39,8 @@ export default async function handler(req, res) {
   const {
     customer_phone,
     phone_number,
+    phone: p1,
+    customerPhone: p2,
     pickup_address,
     dropoff_address,
     pickup_lat  = null,
@@ -48,8 +50,7 @@ export default async function handler(req, res) {
     notes       = null,
   } = params
 
-
-  const phone = customer_phone || phone_number
+  const phone = customer_phone || phone_number || p1 || p2
 
 
   if (!phone)  return res.status(400).json({ error: 'customer_phone (or phone_number) is required' })
