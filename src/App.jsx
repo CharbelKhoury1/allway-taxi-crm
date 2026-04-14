@@ -144,7 +144,7 @@ export default function App() {
   // Still resolving session — show a branded spinner instead of blank screen
   if (!authReady) return (
     <div style={{ height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#0F0F0F', flexDirection:'column', gap:16 }}>
-      <div style={{ width:44, height:44, borderRadius:12, background:'#F5B800', color:'#000', fontSize:22, fontWeight:900, display:'flex', alignItems:'center', justifyContent:'center' }}>A</div>
+      <img src="/allway-logo.ico" alt="Allway Taxi" style={{ width:44, height:44, objectFit:'contain' }} />
       <div style={{ width:24, height:24, border:'3px solid rgba(245,184,0,.2)', borderTopColor:'#F5B800', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}></div>
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
@@ -166,7 +166,7 @@ export default function App() {
       {/* SIDEBAR */}
       <div className="sidebar">
         <div className="sb-brand">
-          <div className="sb-logo">A</div>
+          <img src="/allway-logo.ico" alt="Allway Taxi" className="sb-logo" style={{ objectFit: 'contain', background: 'transparent' }} />
           <div className="sb-brand-text">
             <div className="sb-brand-name">ALLWAY <span>TAXI</span></div>
             <div className="sb-brand-sub">Operations CRM</div>

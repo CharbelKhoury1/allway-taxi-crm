@@ -93,7 +93,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); font-family:
 /* —— SIDEBAR —— */
 .sidebar { width: 240px; flex-shrink: 0; background: var(--bg-sb); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--shadow); }
 .sb-brand { padding: 20px 16px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
-.sb-logo { width: 38px; height: 38px; border-radius: 10px; background: var(--yellow); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; color: #111; flex-shrink: 0; letter-spacing: -1px; transform-origin: center; transition: transform 0.2s; }
+.sb-logo { width: 42px; height: 42px; flex-shrink: 0; object-fit: contain; transform-origin: center; transition: transform 0.2s; }
 .sb-logo:hover { transform: scale(1.05); }
 .sb-brand-text { flex: 1; min-width: 0; }
 .sb-brand-name { font-size: 14px; font-weight: 800; color: var(--text-pri); letter-spacing: .02em; }

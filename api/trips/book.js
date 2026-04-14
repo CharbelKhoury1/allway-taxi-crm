@@ -23,7 +23,8 @@
  */
 
 import { requireApiKey, setCors } from '../_lib/auth.js'
-import { supabaseAnon, supabaseAdmin, requireAdmin } from '../_lib/supabase.js'
+import { supabaseAdmin, requireAdmin } from '../_lib/supabase.js'
+
 
 export default async function handler(req, res) {
   setCors(res)
@@ -47,28 +48,44 @@ export default async function handler(req, res) {
   if (!pickup_address)  return res.status(400).json({ error: 'pickup_address is required' })
   if (!dropoff_address) return res.status(400).json({ error: 'dropoff_address is required' })
 
-  // ── Resolve customer ──────────────────────────────────────────────────────
+  // ── Resolve or Create Customer ──────────────────────────────────────────
   const digits = String(customer_phone).replace(/\D/g, '')
-  const { data: customers } = await supabaseAnon
+  const { data: customers } = await supabaseAdmin
     .from('customers')
     .select('id, full_name, status')
     .ilike('phone', `%${digits.slice(-8)}`)
     .limit(1)
 
-  const customer = customers?.[0]
-  if (!customer)
-    return res.status(404).json({ error: 'Customer not found. Ask them to register first.' })
+  let customer = customers?.[0]
+
+  if (!customer) {
+    // Auto-register new customer
+    const { data: newCust, error: custErr } = await supabaseAdmin
+      .from('customers')
+      .insert({
+        phone:     digits,
+        full_name: 'WhatsApp Customer',
+        status:    'regular'
+      })
+      .select()
+      .single()
+
+    if (custErr) return res.status(500).json({ error: 'Failed to auto-register customer.', detail: custErr.message })
+    customer = newCust
+  }
+
 
   if (customer.status === 'blocked')
     return res.status(403).json({ error: 'This customer account is blocked.' })
 
   // ── Guard: no duplicate active trip ──────────────────────────────────────
-  const { data: existing } = await supabaseAnon
+  const { data: existing } = await supabaseAdmin
     .from('trips')
     .select('id, status')
     .eq('customer_id', customer.id)
     .in('status', ['pending', 'dispatching', 'accepted', 'on_trip'])
     .limit(1)
+
 
   if (existing?.length) {
     const baseUrl = process.env.APP_BASE_URL || `https://${req.headers.host}`
