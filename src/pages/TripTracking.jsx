@@ -331,10 +331,6 @@ export default function TripTracking({ tripId }) {
   const driverName = driver?.full_name ?? '—'
   const initials   = driverName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  if (loading) return <Splash label="Loading your trip…"/>
-  if (error)   return <Splash label={error} isError/>
-
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#0D0D14', fontFamily: 'Inter, system-ui, sans-serif', color: '#fff' }}>
       <style>{`
@@ -347,9 +343,15 @@ export default function TripTracking({ tripId }) {
       `}</style>
 
       {/* ── Map canvas — full screen ──────────────────────────────── */}
-      <div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh' }}/>
+      <div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}/>
 
-      {/* ── Top bar: Allway Taxi branding + status badge ─────────── */}
+      {/* ── Overlays (Loading / Error) ── */}
+      {loading && <Splash label="Loading your trip…"/>}
+      {error && <Splash label={error} isError/>}
+
+      {!loading && !error && (
+        <>
+          {/* ── Top bar: Allway Taxi branding + status badge ─────────── */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0,
         padding: 'env(safe-area-inset-top, 16px) 16px 16px',
@@ -359,7 +361,7 @@ export default function TripTracking({ tripId }) {
       }}>
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg,#F5B800,#e6a800)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 900, color: '#000', flexShrink: 0 }}>A</div>
+          <img src="/allway-logo.png" alt="Allway" style={{ width: 36, height: 36, objectFit: 'contain', flexShrink: 0 }} />
           <div>
             <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: .5 }}>ALLWAY <span style={{ color: '#F5B800' }}>TAXI</span></div>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,.35)', fontWeight: 600 }}>Live Tracking</div>
@@ -466,7 +468,8 @@ export default function TripTracking({ tripId }) {
             </div>
           </div>
         </div>
-      </div>
+        </>
+      )}
     </div>
   )
 }
@@ -476,7 +479,7 @@ function Splash({ label, isError = false }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#0D0D14', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, fontFamily: 'Inter, system-ui, sans-serif', color: '#fff', padding: 32 }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-      <div style={{ width: 52, height: 52, borderRadius: 16, background: 'linear-gradient(135deg,#F5B800,#e6a800)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, fontWeight: 900, color: '#000' }}>A</div>
+      <img src="/allway-logo.png" alt="Allway" style={{ width: 64, height: 64, objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(245,184,0,0.4))' }} />
       {isError ? (
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: '#F09595' }}>Trip not found</div>

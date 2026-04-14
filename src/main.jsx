@@ -14,7 +14,7 @@ const path = window.location.pathname
 
 const isDriverPWA = path.startsWith('/driver')
 
-const TRACK_RE  = /^\/track\/([0-9a-f-]{36})/i
+const TRACK_RE  = /^\/track\/([0-9a-f-]{36})\/?$/i
 const trackHit  = path.match(TRACK_RE)
 const isTracking = !!trackHit
 const tripId     = trackHit?.[1] ?? null
