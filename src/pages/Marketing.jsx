@@ -1,28 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 
 const CAMPAIGNS = [
-  { icon:'chat',  iconBg:'rgba(245,184,0,.15)',  iconColor:'#F5B800', name:'Weekend Rush Promo',    sub:'WhatsApp · 1,240 sent · Ends Sun', badge:'b-green', status:'Live'      },
-  { icon:'doc',   iconBg:'rgba(85,138,221,.15)', iconColor:'#85B7EB', name:'Airport Re-engagement', sub:'SMS · 860 sent · Ongoing',         badge:'b-green', status:'Live'      },
-  { icon:'chart', iconBg:'rgba(93,202,165,.15)', iconColor:'#5DCAA5', name:'New Customer Welcome',  sub:'WhatsApp · Starts Mon 9am',        badge:'b-blue',  status:'Scheduled' },
-  { icon:'clock', iconBg:'rgba(239,159,39,.15)', iconColor:'#EF9F27', name:'Ramadan Offer Blast',   sub:'WhatsApp · 2,100 sent · Ended',    badge:'b-gray',  status:'Ended'     },
+  { icon:'chat',  iconBg:'rgba(245,184,0,.15)',  iconColor:'#F5B800', name:'Weekend Rush Promo',    sub:'WhatsApp · Active · Ends Sun', badge:'b-green', status:'Live'      },
+  { icon:'doc',   iconBg:'rgba(85,138,221,.15)', iconColor:'#85B7EB', name:'Airport Re-engagement', sub:'SMS · Active · Ongoing',         badge:'b-green', status:'Live'      },
 ]
 
-const PROMOS = [
-  { code:'WKND20',  desc:'20% off any ride',    uses:48,  badge:'b-green', status:'Active'  },
-  { code:'FIRST5',  desc:'$5 off first ride',   uses:112, badge:'b-green', status:'Active'  },
-  { code:'AIRPORT', desc:'15% airport rides',   uses:23,  badge:'b-amber', status:'Paused'  },
-  { code:'RAMADAN', desc:'25% all rides',        uses:331, badge:'b-gray',  status:'Expired' },
-  { code:'VIP10',   desc:'10% VIP customers',   uses:67,  badge:'b-green', status:'Active'  },
-]
-
-const PERF_TABLE = [
-  { name:'Weekend Rush Promo',    channel:'WhatsApp', audience:'All customers', sent:'1,240', conv:'178 (14.4%)', revenue:'$534',   badge:'b-green', scheduled:false },
-  { name:'Airport Re-engagement', channel:'SMS',      audience:'Lapsed 30d+',  sent:'860',   conv:'74 (8.6%)',   revenue:'$296',   badge:'b-blue',  scheduled:false },
-  { name:'Ramadan Offer Blast',   channel:'WhatsApp', audience:'All customers', sent:'2,100', conv:'441 (21%)',   revenue:'$1,764', badge:'b-green', scheduled:false },
-  { name:'New Customer Welcome',  channel:'WhatsApp', audience:'New signups',   sent:'—',     conv:'—',           revenue:'',       badge:'b-green', scheduled:true  },
-]
-
-const COL1 = '1fr 80px 80px 90px 90px 80px'
 const PCOL = '90px 1fr 60px 70px'
 
 function CampaignIcon({ icon, bg, color }) {
@@ -39,37 +22,43 @@ function CampaignIcon({ icon, bg, color }) {
   )
 }
 
-export default function Marketing({ onNavigate }) {
+export default function Marketing() {
+  const [promos, setPromos] = useState([])
+  const [loading, setLoading] = useState(true)
   const [promoFilter, setPromoFilter] = useState('All')
   const [expandedCampaign, setExpandedCampaign] = useState(null)
 
-  const filteredPromos = promoFilter === 'All'
-    ? PROMOS
-    : PROMOS.filter(p => p.status === promoFilter)
+  useEffect(() => {
+    async function fetchPromos() {
+      const { data } = await supabase
+        .from('promos')
+        .select('*')
+        .order('id')
+      if (data) setPromos(data)
+      setLoading(false)
+    }
+    fetchPromos()
+  }, [])
 
-  function handleViewAll() {
-    // Scroll to campaign performance table — just animate the page to the bottom
-    document.querySelector('.content')?.scrollTo({ top: 9999, behavior: 'smooth' })
-  }
-
-  function handleManage() {
-    alert('Promo code manager — connect to Supabase to manage codes live!')
-  }
+  const filteredPromos = promos.filter(p => {
+    const status = (p.expiry && new Date(p.expiry) < new Date()) ? 'Expired' : p.status === 'active' ? 'Active' : 'Inactive'
+    if (promoFilter === 'All') return true
+    return status === promoFilter
+  })
 
   return (
     <div>
       <div className="metrics">
-        <div className="metric"><div className="m-label">Active campaigns</div><div className="m-val m-yellow">3</div><div className="m-sub">2 scheduled</div></div>
-        <div className="metric"><div className="m-label">Sent this month</div><div className="m-val">2,840</div><div className="m-sub m-up">+18% vs last month</div></div>
-        <div className="metric"><div className="m-label">Conversion rate</div><div className="m-val">11.4%</div><div className="m-sub m-up">up from 8.9%</div></div>
-        <div className="metric"><div className="m-label">Revenue from promos</div><div className="m-val">$1,230</div><div className="m-sub m-up">+24% vs last month</div></div>
+        <div className="metric"><div className="m-label">Active promos</div><div className="m-val m-yellow">{promos.filter(p=>p.status==='active').length}</div><div className="m-sub">available to users</div></div>
+        <div className="metric"><div className="m-label">Campaigns sent</div><div className="m-val">2,140</div><div className="m-sub m-up">+12% vs last month</div></div>
+        <div className="metric"><div className="m-label">Promo conversion</div><div className="m-val">8.4%</div><div className="m-sub m-up">above industry avg</div></div>
+        <div className="metric"><div className="m-label">Revenue lift</div><div className="m-val">$840</div><div className="m-sub m-up">+14% attribution</div></div>
       </div>
 
       <div className="grid-2" style={{marginBottom:14}}>
         <div className="card">
           <div className="card-head">
-            <span className="card-title">Active campaigns</span>
-            <span className="card-link" onClick={handleViewAll}>View all ↓</span>
+            <span className="card-title">Live campaigns</span>
           </div>
           {CAMPAIGNS.map(c => (
             <div key={c.name}>
@@ -82,25 +71,6 @@ export default function Marketing({ onNavigate }) {
                 <div className="row-info"><div className="row-name">{c.name}</div><div className="row-sub">{c.sub}</div></div>
                 <span className={`badge ${c.badge}`}>{c.status}</span>
               </div>
-              {expandedCampaign === c.name && (
-                <div style={{padding:'10px 16px 12px',background:'rgba(245,184,0,.04)',borderBottom:'1px solid var(--border)'}}>
-                  <div style={{fontSize:12,color:'var(--text-sec)',marginBottom:8}}>Campaign details</div>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-                    <div style={{background:'var(--surface)',borderRadius:8,padding:'8px 10px'}}>
-                      <div style={{fontSize:10,color:'var(--text-ter)',marginBottom:3}}>STATUS</div>
-                      <div style={{fontSize:13,fontWeight:700}}><span className={`badge ${c.badge}`}>{c.status}</span></div>
-                    </div>
-                    <div style={{background:'var(--surface)',borderRadius:8,padding:'8px 10px'}}>
-                      <div style={{fontSize:10,color:'var(--text-ter)',marginBottom:3}}>CHANNEL</div>
-                      <div style={{fontSize:13,fontWeight:700,color:'var(--text-pri)'}}>{c.sub.split(' · ')[0]}</div>
-                    </div>
-                    <div style={{background:'var(--surface)',borderRadius:8,padding:'8px 10px'}}>
-                      <div style={{fontSize:10,color:'var(--text-ter)',marginBottom:3}}>INFO</div>
-                      <div style={{fontSize:11,color:'var(--text-sec)'}}>{c.sub.split(' · ').slice(1).join(' · ')}</div>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -116,43 +86,33 @@ export default function Marketing({ onNavigate }) {
               >
                 <option>All</option>
                 <option>Active</option>
-                <option>Paused</option>
+                <option>Inactive</option>
                 <option>Expired</option>
               </select>
-              <span className="card-link" onClick={handleManage}>Manage</span>
             </div>
           </div>
-          <div className="table-head" style={{gridTemplateColumns:PCOL,fontSize:9}}>Code<span>Discount</span><span>Uses</span><span>Status</span></div>
-          {filteredPromos.length === 0 ? (
-            <div style={{padding:'16px',textAlign:'center',fontSize:12,color:'var(--text-ter)'}}>No codes match filter.</div>
-          ) : filteredPromos.map(p => (
-            <div key={p.code} className="table-row" style={{gridTemplateColumns:PCOL}}>
-              <span style={{fontSize:12,fontWeight:800,color: p.status==='Expired'||p.status==='Paused' ? 'var(--text-ter)' : 'var(--yellow)',fontFamily:'monospace'}}>{p.code}</span>
-              <span style={{fontSize:12,color:'var(--text-sec)'}}>{p.desc}</span>
-              <span style={{fontSize:13,fontWeight:700}}>{p.uses}</span>
-              <span className={`badge ${p.badge}`}>{p.status}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="card" id="campaign-perf">
-        <div className="card-head"><span className="card-title">Campaign performance</span><span className="card-meta">Last 30 days</span></div>
-        <div className="table-head" style={{gridTemplateColumns:COL1}}>Campaign<span>Channel</span><span>Audience</span><span>Sent</span><span>Conversions</span><span>Revenue</span></div>
-        {PERF_TABLE.map(p => (
-          <div key={p.name} className="table-row" style={{gridTemplateColumns:COL1}}>
-            <span style={{fontSize:13,fontWeight:600}}>{p.name}</span>
-            <span className={`badge ${p.badge}`} style={{width:'fit-content'}}>{p.channel}</span>
-            <span style={{fontSize:12,color:'var(--text-sec)'}}>{p.audience}</span>
-            <span style={{fontSize:13,fontWeight:700,color: p.sent==='—' ? 'var(--text-ter)' : undefined}}>{p.sent}</span>
-            {p.scheduled
-              ? <span className="badge b-blue">Scheduled</span>
-              : <span style={{fontSize:13,fontWeight:700,color:'#5DCAA5'}}>{p.conv}</span>
+          <div className="table-head" style={{gridTemplateColumns:PCOL,fontSize:9}}>Code<span>Discount</span><span>Type</span><span>Status</span></div>
+          {loading ? (
+            <div style={{padding:20, textAlign:'center'}}>Loading...</div>
+          ) : filteredPromos.length === 0 ? (
+            <div style={{padding:'16px',textAlign:'center',fontSize:12,color:'var(--text-ter)'}}>No active codes found.</div>
+          ) : filteredPromos.map(p => {
+              const isExpired = p.expiry && new Date(p.expiry) < new Date()
+              const status = isExpired ? 'Expired' : p.status === 'active' ? 'Active' : 'Inactive'
+              const badge  = isExpired ? 'b-gray' : p.status === 'active' ? 'b-green' : 'b-amber'
+              return (
+                <div key={p.code} className="table-row" style={{gridTemplateColumns:PCOL}}>
+                  <span style={{fontSize:12,fontWeight:800,color: isExpired ? 'var(--text-ter)' : 'var(--yellow)',fontFamily:'monospace'}}>{p.code}</span>
+                  <span style={{fontSize:12,color:'var(--text-sec)'}}>{p.discount_value}{p.discount_type === 'percent' ? '%' : '$'} off</span>
+                  <span style={{fontSize:11,color:'var(--text-ter)', textTransform:'capitalize'}}>{p.discount_type}</span>
+                  <span className={`badge ${badge}`}>{status}</span>
+                </div>
+              )
             }
-            <span style={{fontSize:13,fontWeight:700,color: !p.revenue ? 'var(--text-ter)' : undefined}}>{p.revenue || '—'}</span>
-          </div>
-        ))}
+          )}
+        </div>
       </div>
     </div>
   )
 }
+

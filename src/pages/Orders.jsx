@@ -147,7 +147,7 @@ export default function Orders() {
       {/* Result count */}
       {filtered.length > 0 && (
         <div style={{marginTop:10,fontSize:11,color:'var(--text-ter)',textAlign:'right'}}>
-          Showing {filtered.length} of {ALL_ORDERS.length} orders
+          Showing {filtered.length} of {orders.length} orders
           {(search || status !== 'All statuses') && (
             <span
               style={{marginLeft:8,color:'var(--yellow)',cursor:'pointer'}}
