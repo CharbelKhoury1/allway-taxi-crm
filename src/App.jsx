@@ -13,6 +13,7 @@ import Loyalty    from './pages/Loyalty'
 
 
 
+
 const NAV = [
   {
     section: 'Operations',
@@ -64,6 +65,7 @@ const PAGE_TITLES  = { dash:'Dashboard', orders:'Orders', customers:'Customers',
 const PAGE_ACTIONS = { dash:'+ New order', orders:'Export CSV', customers:'+ Add customer', drivers:'+ Add driver', analytics:'Export report', chats:'Mark all read', staff:'+ Add staff', marketing:'+ New campaign', loyalty:'+ Add reward' }
 
 const PAGES = { dash:Dashboard, orders:Orders, customers:Customers, drivers:Drivers, analytics:Analytics, chats:Chats, staff:Staff, marketing:Marketing, loyalty:Loyalty }
+
 
 
 function useLiveTime() {
@@ -152,7 +154,10 @@ export default function App() {
     return <Login onLogin={setUser} />
   }
 
-  const PageComponent = PAGES[page]
+  let PageComponent = PAGES[page]
+  if (!PageComponent) {
+    PageComponent = PAGES['dash']
+  }
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark')
 
