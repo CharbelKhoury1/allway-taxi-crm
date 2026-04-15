@@ -23,7 +23,7 @@ const NAV = [
         icon:<><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></> },
       { id:'orders',    label:'Orders',    badge:null,
         icon:<><rect x="2" y="2" width="12" height="12" rx="1.5"/><line x1="5" y1="6" x2="11" y2="6"/><line x1="5" y1="9" x2="9" y2="9"/></> },
-      { id:'chats',     label:'WhatsApp',  badge:2,
+      { id:'chats',     label:'WhatsApp',  badge:null,
         icon:<path d="M2 3a1 1 0 011-1h10a1 1 0 011 1v7a1 1 0 01-1 1H5l-3 2V3z"/> },
     ],
   },
@@ -92,7 +92,24 @@ export default function App() {
   const [availableDrivers, setAvailableDrivers] = useState([])
   const [customers, setCustomers] = useState([])
   const [isNewCust, setIsNewCust] = useState(false)
+  const [chatBadge, setChatBadge] = useState(null)
   const time = useLiveTime()
+
+  // Live chat badge — count unresolved conversations
+  useEffect(() => {
+    async function fetchBadge() {
+      const { count } = await supabase
+        .from('conversations')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['active', 'needs_human'])
+      setChatBadge(count > 0 ? count : null)
+    }
+    fetchBadge()
+    const sub = supabase.channel('badge-convs')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, fetchBadge)
+      .subscribe()
+    return () => supabase.removeChannel(sub)
+  }, [])
 
   // Bootstrap: restore existing session, then listen for auth changes
   useEffect(() => {
@@ -187,7 +204,7 @@ export default function App() {
   async function handleAction() {
     if (page === 'chats') {
       const { error } = await supabase.from('conversations').update({ status: 'resolved' }).in('status', ['active', 'needs_human'])
-      if (!error) { toast.success('All conversations marked as resolved'); setTimeout(() => window.location.reload(), 800) }
+      if (!error) { setChatBadge(null); toast.success('All conversations marked as resolved'); setTimeout(() => window.location.reload(), 800) }
     } else if (page === 'orders') {
       const [drvRes, custRes] = await Promise.all([
         supabase.from('drivers').select('id, full_name, plate').eq('online', true).eq('status', 'available').order('full_name'),
@@ -462,7 +479,7 @@ export default function App() {
                 <div className="nav-inner">
                   <svg className="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">{item.icon}</svg>
                   <span>{item.label}</span>
-                  {item.badge && <span className="nav-badge">{item.badge}</span>}
+                  {(item.id === 'chats' ? chatBadge : item.badge) ? <span className="nav-badge">{item.id === 'chats' ? chatBadge : item.badge}</span> : null}
                 </div>
               </div>
             ))}
