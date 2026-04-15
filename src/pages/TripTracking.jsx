@@ -400,15 +400,15 @@ export default function TripTracking({ tripId }) {
         {/* ── Distance + ETA row (only shown when driver approaching) ── */}
         {distance != null && eta != null && !isFinal && (
           <div style={{ display: 'flex', gap: 12, padding: '8px 20px 16px', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
-            <div style={{ flex: 1, background: 'rgba(93,202,165,.08)', border: '1px solid rgba(93,202,165,.2)', borderRadius: 16, padding: '14px 16px', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,.35)', letterSpacing: .6, marginBottom: 4 }}>DISTANCE</div>
+            <div style={{ flex: 1, background: 'rgba(93,202,165,.08)', border: '1px solid rgba(93,202,165,.18)', borderRadius: 20, padding: '16px 12px', textAlign: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
+              <div style={{ fontSize: 9, fontWeight: 800, color: 'rgba(255,255,255,.25)', letterSpacing: .8, marginBottom: 4, textTransform: 'uppercase' }}>DISTANCE</div>
               <div style={{ fontSize: 24, fontWeight: 900, color: '#5DCAA5' }}>{formatDistance(distance)}</div>
-              <div style={{ fontSize: 10, color: 'rgba(93,202,165,.6)', marginTop: 2 }}>to pickup</div>
+              <div style={{ fontSize: 10, color: 'rgba(93,202,165,.45)', marginTop: 2, fontWeight: 600 }}>to pickup</div>
             </div>
-            <div style={{ flex: 1, background: 'rgba(245,184,0,.08)', border: '1px solid rgba(245,184,0,.2)', borderRadius: 16, padding: '14px 16px', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,.35)', letterSpacing: .6, marginBottom: 4 }}>ETA</div>
+            <div style={{ flex: 1, background: 'rgba(245,184,0,.08)', border: '1px solid rgba(245,184,0,.18)', borderRadius: 20, padding: '16px 12px', textAlign: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
+              <div style={{ fontSize: 9, fontWeight: 800, color: 'rgba(255,255,255,.25)', letterSpacing: .8, marginBottom: 4, textTransform: 'uppercase' }}>ETA</div>
               <div style={{ fontSize: 24, fontWeight: 900, color: '#F5B800' }}>{eta} min</div>
-              <div style={{ fontSize: 10, color: 'rgba(245,184,0,.6)', marginTop: 2 }}>estimated</div>
+              <div style={{ fontSize: 10, color: 'rgba(245,184,0,.45)', marginTop: 2, fontWeight: 600 }}>estimated</div>
             </div>
           </div>
         )}

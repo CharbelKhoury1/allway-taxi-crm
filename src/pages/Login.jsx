@@ -41,6 +41,7 @@ export default function Login({ onLogin }) {
             <label>Email Address</label>
             <input 
               type="email" 
+              className="f-input"
               value={email} 
               onChange={e => setEmail(e.target.value)}
               placeholder="admin@allwaytaxi.com"
@@ -52,6 +53,7 @@ export default function Login({ onLogin }) {
             <label>Password</label>
             <input 
               type="password" 
+              className="f-input"
               value={password} 
               onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
@@ -60,12 +62,12 @@ export default function Login({ onLogin }) {
           </div>
 
           {error && (
-            <div style={{ fontSize: 13, color: '#F09595', background: 'rgba(240,149,149,.1)', border: '1px solid rgba(240,149,149,.2)', borderRadius: 8, padding: '10px 14px' }}>
+            <div style={{ fontSize: 13, color: '#F09595', background: 'rgba(240,149,149,.1)', border: '1px solid rgba(240,149,149,.2)', borderRadius: 12, padding: '12px 16px' }}>
               {error}
             </div>
           )}
 
-          <button type="submit" className="login-btn" disabled={loading}>
+          <button type="submit" className="login-btn btn btn-primary" style={{ width: '100%', padding: 14, fontSize: 15 }} disabled={loading}>
             {loading ? 'Authenticating...' : 'Sign In'}
           </button>
         </form>
@@ -137,48 +139,16 @@ export default function Login({ onLogin }) {
         }
 
         .form-group label {
-          font-size: 12px;
-          font-weight: 600;
-          color: rgba(240,240,240,0.6);
+          font-size: 11px;
+          font-weight: 700;
+          color: rgba(240,240,240,0.4);
           text-transform: uppercase;
           letter-spacing: 0.05em;
         }
 
-        .form-group input {
-          background: #252525;
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 10px;
-          padding: 12px 16px;
-          color: #F0F0F0;
-          font-size: 14px;
-          outline: none;
-          transition: border-color 0.2s, box-shadow 0.2s;
-        }
-
-        .form-group input:focus {
-          border-color: #F5B800;
-          box-shadow: 0 0 0 3px rgba(245,184,0,0.1);
-        }
-
         .login-btn {
           margin-top: 10px;
-          background: #F5B800;
-          color: #111;
-          border: none;
-          border-radius: 10px;
-          padding: 14px;
-          font-size: 14px;
-          font-weight: 700;
           cursor: pointer;
-          transition: transform 0.1s, background 0.2s;
-        }
-
-        .login-btn:hover {
-          background: #e6ac00;
-        }
-
-        .login-btn:active {
-          transform: scale(0.98);
         }
 
         .login-btn:disabled {
