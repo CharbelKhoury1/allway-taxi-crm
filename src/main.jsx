@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { Analytics } from "@vercel/analytics/react"
 import App from './App'
 import DriverApp from './pages/DriverApp'
 import TripTracking from './pages/TripTracking'
@@ -27,5 +28,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       ? <TripTracking tripId={tripId} />
       : <App />
     }
+    <Analytics />
   </React.StrictMode>
 )

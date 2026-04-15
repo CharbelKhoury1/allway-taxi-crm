@@ -98,10 +98,6 @@ export default function Orders() {
           <option>All time</option>
         </select>
         <button className="btn" onClick={() => exportCSV(filtered)}>CSV</button>
-        <button className="btn btn-primary" onClick={() => {
-          localStorage.setItem('currentPage', 'orders');
-          window.dispatchEvent(new CustomEvent('open-new-order'));
-        }}>➕ NEW ORDER</button>
       </div>
 
       <div className="metrics metrics-4b" style={{ marginBottom:18 }}>
