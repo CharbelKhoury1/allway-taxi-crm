@@ -48,6 +48,7 @@ export default function Dashboard({ onNavigate }) {
         ({ new: d }) => {
           const isRecent = d.last_seen && (Date.now() - new Date(d.last_seen).getTime()) < STALE_MS
           const isLive = d.online && d.lat != null && d.lng != null && isRecent
+          
           if (isLive) {
             // Driver online with fresh location → add or update marker immediately
             const mapped = toMapDriver(d)
@@ -60,9 +61,12 @@ export default function Dashboard({ onNavigate }) {
             pushLog(`Driver ${d.full_name} — ${d.status.replace('_', ' ')} · ${d.lat?.toFixed(4)}°N`)
           } else {
             // Driver went offline, location cleared, or last_seen is stale → remove marker
-            const wasShown = true  // may or may not be in state — filter handles it safely
             setDrivers(prev => prev.filter(x => x.id !== d.id))
-            if (wasShown && d.online === false) pushLog(`Driver ${d.full_name} went offline`)
+            
+            // Clear selection if the selected driver is the one that just went offline
+            setSelected(prev => (prev && prev.id === d.id) ? null : prev)
+
+            if (d.online === false) pushLog(`Driver ${d.full_name} went offline`)
           }
         }
       )
@@ -78,12 +82,13 @@ export default function Dashboard({ onNavigate }) {
   useEffect(() => {
     async function fetchStats() {
       const today = todayISO()
+      const rangeStart = new Date(Date.now() - 12 * 3600 * 1000).toISOString()
       const [tripsRes, pendingRes, revenueRes, recentRes, chartRes] = await Promise.all([
         supabase.from('trips').select('id', { count: 'exact', head: true }).in('status', ['on_trip', 'accepted']),
         supabase.from('trips').select('id', { count: 'exact', head: true }).in('status', ['pending', 'dispatching']),
         supabase.from('trips').select('fare_usd').eq('status', 'completed').gte('completed_at', today),
         supabase.from('trips').select('id, status, pickup_address, dropoff_address, customers(full_name)').in('status', ['pending','dispatching','accepted','on_trip']).order('requested_at', {ascending:false}).limit(5),
-        supabase.from('trips').select('requested_at').gte('requested_at', today)
+        supabase.from('trips').select('requested_at').gte('requested_at', rangeStart)
       ])
 
       // Revenue

@@ -117,7 +117,7 @@ export default function App() {
     const timeout = setTimeout(() => {
       setUser(false)
       setAuthReady(true)
-    }, 8000)
+    }, 15000)
 
     supabase.auth.getSession()
       .then(({ data: { session } }) => {
@@ -264,7 +264,7 @@ export default function App() {
                       dropoff_address: fd.get('d'),
                       fare_usd:        parseFloat(fd.get('fare')) || 0,
                       driver_id:       driverId,
-                      status:          driverId ? 'dispatching' : 'requested',
+                      status:          driverId ? 'dispatching' : 'pending',
                       requested_at:    new Date().toISOString(),
                     });
                     if (!error) {
@@ -324,7 +324,7 @@ export default function App() {
                     </div>
 
                     <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:14}}>
-                      {isNewCust ? 'Register & Dispatch' : (availableDrivers.length > 0 ? 'Dispatch Trip' : 'Receive Order')}
+                      {isNewCust ? 'Register & Dispatch' : (availableDrivers.length > 0 ? 'Dispatch Trip' : 'New Order')}
                     </button>
                   </form>
                 )}

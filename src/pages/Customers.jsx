@@ -2,6 +2,22 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '../lib/supabase'
 
+function formatPhone(p) {
+  if (!p) return '—'
+  const d = p.replace(/\D/g, '') // strip non-digits
+  
+  // Lebanese numbers are usually 8 digits (e.g. 70123456 or 03123456)
+  // Or 11 digits if they include the country code (96170123456)
+  let last8 = d.slice(-8)
+  if (last8.length < 8) return p // fallback for weird numbers
+
+  const part1 = last8.slice(0, 2)    // XX
+  const part2 = last8.slice(2, 5)    // XXX
+  const part3 = last8.slice(5)       // XXX
+  
+  return `+961 ${part1} ${part2} ${part3}`
+}
+
 const LOC_SVG = {
   Home: (
     <>
@@ -90,7 +106,7 @@ function CustomerDetail({ customer, onRefresh }) {
         <div>
           <div style={{fontSize:16,fontWeight:800,color:'var(--text-pri)',marginBottom:4}}>{d.full_name}</div>
           <div style={{marginBottom:6}}><span className={`badge ${badge}`}>{d.status}</span></div>
-          <div style={{fontSize:12,color:'var(--text-ter)'}}>{d.phone}</div>
+          <div style={{fontSize:12,color:'var(--text-ter)'}}>{formatPhone(d.phone)}</div>
         </div>
       </div>
       <div className="profile-stats" style={{ gap: '12px', margin: '20px 0' }}>
@@ -216,7 +232,7 @@ export default function Customers() {
                     <div className="av av-y" style={{width:32,height:32,fontSize:11}}>{c.full_name[0]}</div>
                     <div>
                       <div style={{fontSize:14,fontWeight:600,color:'var(--text-pri)'}}>{c.full_name}</div>
-                      <div style={{fontSize:12,color:'var(--text-ter)'}}>{c.phone}</div>
+                      <div style={{fontSize:12,color:'var(--text-ter)'}}>{formatPhone(c.phone)}</div>
                     </div>
                   </div>
                   <span style={{fontSize:15,fontWeight:700}}>{c.total_trips || 0}</span>

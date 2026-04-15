@@ -924,7 +924,7 @@ export default function DriverApp() {
     if (!online || activeTrip) return
     const poll = () => {
        supabase.from('trips').select('*, customers(full_name)')
-         .or(`status.eq.requested,and(status.eq.dispatching,driver_id.eq.${driver.id})`)
+         .or(`status.eq.pending,and(status.eq.dispatching,driver_id.eq.${driver.id})`)
          .then(({ data }) => setRequestedTrips(data || []))
     }
     const id = setInterval(poll, 15000)
@@ -943,7 +943,7 @@ export default function DriverApp() {
 
     // Initial fetch of unassigned requested trips + direct dispatches for this driver
     supabase.from('trips').select('*, customers(full_name)')
-      .or(`status.eq.requested,and(status.eq.dispatching,driver_id.eq.${driver.id})`)
+      .or(`status.eq.pending,and(status.eq.dispatching,driver_id.eq.${driver.id})`)
       .then(({ data }) => {
         console.log('📡 INITIAL JOBS FETCHED:', data?.length || 0)
         setRequestedTrips(data || [])
@@ -1024,7 +1024,7 @@ export default function DriverApp() {
           .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trips' }, payload => {
             console.log('🔄 TRIP UPDATE:', payload.new.status, payload.new.driver_id)
             // Should it be in my list? (Requested OR Dispatched to me)
-            const isMine = payload.new.status === 'requested' || (payload.new.status === 'dispatching' && payload.new.driver_id === driver.id)
+            const isMine = payload.new.status === 'pending' || (payload.new.status === 'dispatching' && payload.new.driver_id === driver.id)
             
             if (!isMine) {
               setRequestedTrips(prev => prev.filter(t => t.id !== payload.new.id))

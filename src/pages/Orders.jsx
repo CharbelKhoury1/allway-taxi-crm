@@ -45,7 +45,7 @@ export default function Orders() {
           total: data.length,
           completed: data.filter(r => r.status === 'completed').length,
           cancelled: data.filter(r => r.status === 'cancelled').length,
-          no_driver: data.filter(r => r.status === 'no_driver' || r.status === 'requested').length
+          no_driver: data.filter(r => r.status === 'no_driver' || r.status === 'pending').length
         })
       }
       setLoading(false)
@@ -67,7 +67,7 @@ export default function Orders() {
     
     const uiStatus = o.status === 'completed' ? 'Completed' :
                      o.status === 'cancelled' ? 'Cancelled' :
-                     o.status === 'requested' ? 'Requested' :
+                     o.status === 'pending'   ? 'New Order' :
                      o.status === 'dispatching' ? 'Dispatching' :
                      o.status === 'no_driver' ? 'No Driver' : 'In progress'
                      
@@ -86,7 +86,7 @@ export default function Orders() {
         />
         <select value={status} onChange={e => setStatus(e.target.value)}>
           <option>All statuses</option>
-          <option>Requested</option>
+          <option>New Order</option>
           <option>Dispatching</option>
           <option>In progress</option>
           <option>Completed</option>
@@ -125,11 +125,12 @@ export default function Orders() {
         ) : filtered.map(o => {
           const uiStatus = o.status === 'completed' ? 'Completed' : 
                            o.status === 'cancelled' ? 'Cancelled' :
-                           o.status === 'requested' ? 'Requested' :
+                           o.status === 'pending'   ? 'New Order' :
+                           o.status === 'no_driver' ? 'No Driver' :
                            o.status === 'dispatching' ? 'Dispatching' : 'In progress'
           const badge = o.status === 'completed' ? 'b-green' :
                         o.status === 'cancelled' ? 'b-red' :
-                        o.status === 'requested' || o.status === 'no_driver' ? 'b-yellow' :
+                        o.status === 'pending' || o.status === 'no_driver' ? 'b-yellow' :
                         o.status === 'dispatching' ? 'b-amber' : 'b-amber'
 
           return (
