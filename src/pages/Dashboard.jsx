@@ -12,8 +12,10 @@ export default function Dashboard({ onNavigate }) {
 
 
   // ── Live driver locations ──────────────────────────────────────
-  // Drivers whose last_seen is older than this are considered stale/disconnected
-  const STALE_MS = 2 * 60 * 1000  // 2 minutes
+  // Drivers whose last_seen is older than this are considered stale/disconnected.
+  // Matches the DB auto_offline_stale_drivers function which uses 5 minutes.
+  // Using 2min was too aggressive — drivers miss heartbeats on weak connections.
+  const STALE_MS = 5 * 60 * 1000  // 5 minutes
 
   useEffect(() => {
     // Initial fetch: online drivers with a fresh last_seen (within 2 minutes)
@@ -29,6 +31,11 @@ export default function Dashboard({ onNavigate }) {
       }
     }
     fetchDrivers()
+
+    // Re-fetch all online drivers every 60s as a safety net.
+    // This restores any driver that was incorrectly evicted from the UI
+    // due to a Realtime event delay or a missed heartbeat.
+    const refreshInterval = setInterval(fetchDrivers, 60_000)
 
     // Periodic stale cleanup — evict drivers whose last_seen has gone stale
     // (covers the case where a driver's app died without calling goOffline)
@@ -74,6 +81,7 @@ export default function Dashboard({ onNavigate }) {
 
     return () => {
       clearInterval(staleCleanup)
+      clearInterval(refreshInterval)
       supabase.removeChannel(channel)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
