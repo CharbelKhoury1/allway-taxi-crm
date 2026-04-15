@@ -214,32 +214,38 @@ export default function Customers() {
             <div style={{padding:'20px 16px',textAlign:'center',fontSize:13,color:'var(--text-ter)'}}>
               No customers match your search.
             </div>
-          ) : filtered.map(c => {
-              const badge = c.status === 'vip' ? 'b-yellow' : c.status === 'blocked' ? 'b-red' : 'b-gray'
-              return (
-                <div
-                  className="table-row"
-                  key={c.id}
-                  style={{
-                    gridTemplateColumns:'1fr 55px 65px',
-                    padding: '16px 20px',
-                    background: selectedId === c.id ? 'rgba(245,184,0,.08)' : undefined,
-                    borderLeft: selectedId === c.id ? '3px solid var(--yellow)' : '3px solid transparent',
-                  }}
-                  onClick={() => setSelected(c.id)}
-                >
-                  <div style={{display:'flex',alignItems:'center',gap:12}}>
-                    <div className="av av-y" style={{width:32,height:32,fontSize:11}}>{c.full_name[0]}</div>
-                    <div>
-                      <div style={{fontSize:14,fontWeight:600,color:'var(--text-pri)'}}>{c.full_name}</div>
-                      <div style={{fontSize:12,color:'var(--text-ter)'}}>{formatPhone(c.phone)}</div>
+          ) : (
+            <div style={{ maxHeight: 'calc(100vh - 250px)', overflowY: 'auto', scrollbarWidth: 'none' }}>
+              <style>{`.table-scroll::-webkit-scrollbar { display: none; }`}</style>
+              {filtered.map(c => {
+                  const badge = c.status === 'vip' ? 'b-yellow' : c.status === 'blocked' ? 'b-red' : 'b-gray'
+                  return (
+                    <div
+                      className="table-row table-scroll"
+                      key={c.id}
+                      style={{
+                        gridTemplateColumns:'1fr 55px 65px',
+                        padding: '16px 20px',
+                        background: selectedId === c.id ? 'rgba(245,184,0,.08)' : undefined,
+                        borderLeft: selectedId === c.id ? '3px solid var(--yellow)' : '3px solid transparent',
+                        borderBottom: '1px solid var(--border)'
+                      }}
+                      onClick={() => setSelected(c.id)}
+                    >
+                      <div style={{display:'flex',alignItems:'center',gap:12}}>
+                        <div className="av av-y" style={{width:32,height:32,fontSize:11}}>{c.full_name[0]}</div>
+                        <div>
+                          <div style={{fontSize:14,fontWeight:600,color:'var(--text-pri)'}}>{c.full_name}</div>
+                          <div style={{fontSize:12,color:'var(--text-ter)'}}>{formatPhone(c.phone)}</div>
+                        </div>
+                      </div>
+                      <span style={{fontSize:15,fontWeight:700}}>{c.total_trips || 0}</span>
+                      <span className={`badge ${badge}`} style={{padding:'4px 10px',fontSize:'10px', textTransform:'uppercase'}}>{c.status}</span>
                     </div>
-                  </div>
-                  <span style={{fontSize:15,fontWeight:700}}>{c.total_trips || 0}</span>
-                  <span className={`badge ${badge}`} style={{padding:'4px 10px',fontSize:'10px', textTransform:'uppercase'}}>{c.status}</span>
-                </div>
-              )
-            }
+                  )
+                }
+              )}
+            </div>
           )}
         </div>
         <CustomerDetail customer={selectedCustomer} onRefresh={fetchCustomers} />
