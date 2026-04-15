@@ -83,6 +83,16 @@ export default function Chats() {
     ))
   }
 
+  async function markUnread() {
+    if (!active) return
+    await supabase.from('conversations')
+      .update({ status: 'active', fallback_to_human: false })
+      .eq('id', active)
+    setConvs(prev => prev.map(c =>
+      c.id === active ? { ...c, status: 'active', fallback_to_human: false } : c
+    ))
+  }
+
   const filteredConvs = conversations.filter(c =>
     !search || c.customers?.full_name?.toLowerCase().includes(search.toLowerCase())
   )
@@ -106,6 +116,7 @@ export default function Chats() {
   }
 
   const activeConv  = conversations.find(c => c.id === active)
+  const isResolved  = activeConv?.status === 'resolved'
   const needsHuman  = activeConv?.status === 'needs_human'
 
   return (
@@ -149,7 +160,7 @@ export default function Chats() {
               </div>
 
               <div className={`chat-prev ${isUrgent ? 'red' : ''}`}>
-                {isUrgent ? '⚠ Needs human attention' : 'Handled by AI'}
+                {isUrgent ? '⚠ Needs human attention' : (c.status === 'resolved' ? 'Resolved' : 'Handled by AI')}
               </div>
             </div>
           )
@@ -177,26 +188,52 @@ export default function Chats() {
 
           {/* Status badge + action button */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className={`badge ${needsHuman ? 'b-red' : activeConv?.status === 'resolved' ? 'b-gray' : 'b-green'}`}>
-              {needsHuman ? '⚠ NEEDS HUMAN' : activeConv?.status === 'resolved' ? 'RESOLVED' : 'AI ACTIVE'}
+            <span className={`badge ${needsHuman ? 'b-red' : isResolved ? 'b-gray' : 'b-green'}`}>
+              {needsHuman ? '⚠ NEEDS HUMAN' : isResolved ? 'RESOLVED' : 'AI ACTIVE'}
             </span>
 
-            {needsHuman ? (
+            {isResolved ? (
               <button
                 className="btn"
-                style={{ fontSize: 11, padding: '5px 12px', background: 'rgba(93,202,165,.12)', borderColor: 'rgba(93,202,165,.35)', color: '#5DCAA5' }}
-                onClick={markResolved}
+                style={{ fontSize: 11, padding: '5px 12px', borderColor: 'var(--border2)', color: 'var(--text-sec)' }}
+                onClick={markUnread}
               >
-                ✓ Mark Resolved
+                📥 Mark Unread
               </button>
+            ) : needsHuman ? (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  className="btn"
+                  style={{ fontSize: 11, padding: '5px 12px', background: 'rgba(93,202,165,.12)', borderColor: 'rgba(93,202,165,.35)', color: '#5DCAA5' }}
+                  onClick={markResolved}
+                >
+                  ✓ Mark Resolved
+                </button>
+                <button
+                  className="btn"
+                  style={{ fontSize: 11, padding: '5px 12px', borderColor: 'var(--border2)', color: 'var(--text-sec)' }}
+                  onClick={markUnread}
+                >
+                  📥 Mark Unread
+                </button>
+              </div>
             ) : (
-              <button
-                className="btn"
-                style={{ fontSize: 11, padding: '5px 12px', borderColor: 'rgba(224,75,74,.4)', color: '#F09595' }}
-                onClick={assignAgent}
-              >
-                🚨 Assign Agent
-              </button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  className="btn"
+                  style={{ fontSize: 11, padding: '5px 12px', borderColor: 'rgba(224,75,74,.4)', color: '#F09595' }}
+                  onClick={assignAgent}
+                >
+                  🚨 Assign Agent
+                </button>
+                <button
+                  className="btn"
+                  style={{ fontSize: 11, padding: '5px 12px', borderColor: 'var(--border2)' }}
+                  onClick={markResolved}
+                >
+                  Mark Resolved
+                </button>
+              </div>
             )}
           </div>
         </div>
