@@ -33,5 +33,3 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <SpeedInsights />
   </React.StrictMode>
 )
-  </React.StrictMode>
-)
