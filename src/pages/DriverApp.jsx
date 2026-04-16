@@ -1205,7 +1205,8 @@ export default function DriverApp() {
 
   return (
     /* Outer shell: owns the FULL physical screen edge-to-edge */
-    <div style={{ position:'fixed', inset:0, background:'#0D0D14' }}>
+    <div style={{ position:'fixed', inset:0, background:'#0D0D14', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      <div style={{ height:'env(safe-area-inset-top, 0px)', flexShrink:0 }} />
       <style>{`
         * { -webkit-tap-highlight-color:transparent; box-sizing:border-box; font-family:'Inter',system-ui,sans-serif; }
         html, body { margin:0; padding:0; background:#0D0D14; overscroll-behavior:none; }
@@ -1335,7 +1336,7 @@ async function fetchTripDetails(id) {
 
 // ─── Styles ───────────────────────────────────────────────────
 const g = {
-  screen: { height:'100%', width:'100%', maxWidth:430, margin:'0 auto', background:'#0D0D14', color:'#fff', display:'flex', flexDirection:'column', overflow:'hidden', position:'relative' },
+  screen: { flex:1, width:'100%', maxWidth:430, margin:'0 auto', background:'#0D0D14', color:'#fff', display:'flex', flexDirection:'column', overflow:'hidden', position:'relative' },
   loginBg: { position:'absolute', inset:0, zIndex:-1, background:'#0D0D14', overflow:'hidden' },
   bgCircle1: { position:'absolute', top:'-15%', left:'-25%', width:'80%', height:'55%', background:'radial-gradient(circle, rgba(245,184,0,0.08) 0%, transparent 70%)' },
   bgCircle2: { position:'absolute', bottom:'-10%', right:'-15%', width:'70%', height:'45%', background:'radial-gradient(circle, rgba(93,202,165,0.06) 0%, transparent 70%)' },

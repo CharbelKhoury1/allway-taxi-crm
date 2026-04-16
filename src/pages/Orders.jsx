@@ -1,77 +1,110 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const COL = '50px 1fr 1fr 90px 75px 95px'
+const STATUS_BADGE = {
+  completed:   'b-green',
+  on_trip:     'b-blue',
+  accepted:    'b-blue',
+  pending:     'b-amber',
+  dispatching: 'b-amber',
+  cancelled:   'b-gray',
+}
+
+const STATUS_LABEL = {
+  completed:   'Completed',
+  on_trip:     'In progress',
+  accepted:    'Assigned',
+  pending:     'Pending',
+  dispatching: 'Dispatching',
+  cancelled:   'Cancelled',
+}
+
+const AV_COLORS = ['av-y', 'av-r', 'av-b', 'av-g', 'av-p']
+function avColor(name = '') {
+  let h = 0; for (const c of name) h += c.charCodeAt(0)
+  return AV_COLORS[h % AV_COLORS.length]
+}
+function initials(name = '') {
+  return (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+}
+function fmtTime(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
 
 function exportCSV(orders) {
-  const header = ['ID', 'Customer', 'Route', 'Driver', 'Time', 'Status']
-  const rows = orders.map(o => [o.id.slice(0,5), o.customers?.full_name, `${o.pickup_address} → ${o.dropoff_address}`, o.drivers?.full_name || '—', new Date(o.requested_at).toLocaleTimeString(), o.status])
+  const header = ['ID', 'Customer', 'Pickup', 'Dropoff', 'Driver', 'Time', 'Status', 'Fare']
+  const rows = orders.map(o => [o.id, o.customerName, o.pickup, o.dropoff, o.driverName, o.time, o.statusLabel, o.fare ? `$${o.fare}` : '—'])
   const csv = [header, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
   const blob = new Blob([csv], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
-  a.href = url
-  a.download = `allway-orders-${new Date().toISOString().slice(0,10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+  a.href = url; a.download = `allway-orders-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click(); URL.revokeObjectURL(url)
 }
 
+const COL = '55px 1fr 1fr 90px 70px 95px'
+
 export default function Orders() {
-  const [orders, setOrders]   = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch]   = useState('')
-  const [status, setStatus]   = useState('All statuses')
-  const [period, setPeriod]   = useState('Today')
-  const [selected, setSelected] = useState(null)
-  const [stats, setStats]     = useState({ total:0, completed:0, cancelled:0, no_driver:0 })
+  const [orders, setOrders]       = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [search, setSearch]       = useState('')
+  const [statusFilter, setStatus] = useState('All statuses')
+  const [period, setPeriod]       = useState('Today')
+  const [selected, setSelected]   = useState(null)
+  const [stats, setStats]         = useState({ total: 0, completed: 0, cancelled: 0, pending: 0 })
 
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true)
-      const today = new Date()
-      today.setHours(0,0,0,0)
-      
-      let query = supabase
-        .from('trips')
-        .select('id, status, requested_at, pickup_address, dropoff_address, fare_usd, customers(full_name), drivers(full_name)')
-        .order('requested_at', { ascending: false })
+  useEffect(() => { fetchOrders() }, [period])
 
-      if (period === 'Today') query = query.gte('requested_at', today.toISOString())
-      
-      const { data } = await query
-      if (data) {
-        setOrders(data)
-        setStats({
-          total: data.length,
-          completed: data.filter(r => r.status === 'completed').length,
-          cancelled: data.filter(r => r.status === 'cancelled').length,
-          no_driver: data.filter(r => r.status === 'no_driver' || r.status === 'pending').length
-        })
-      }
-      setLoading(false)
+  async function fetchOrders() {
+    setLoading(true)
+    const now = new Date()
+    let from = null
+    if (period === 'Today') {
+      const d = new Date(now); d.setHours(0, 0, 0, 0); from = d.toISOString()
+    } else if (period === 'This week') {
+      const d = new Date(now); d.setDate(now.getDate() - 7); from = d.toISOString()
+    } else if (period === 'This month') {
+      const d = new Date(now); d.setDate(now.getDate() - 30); from = d.toISOString()
     }
-    fetchData()
-  }, [period])
 
-  useEffect(() => {
-    const handleExport = () => exportCSV(orders)
-    window.addEventListener('export-csv', handleExport)
-    return () => window.removeEventListener('export-csv', handleExport)
-  }, [orders])
+    let q = supabase
+      .from('trips')
+      .select('id, status, fare_usd, pickup_address, dropoff_address, requested_at, customers(full_name), drivers(full_name)')
+      .order('requested_at', { ascending: false })
+    if (from) q = q.gte('requested_at', from)
+
+    const { data, error } = await q
+    if (!error && data) {
+      const mapped = data.map(t => ({
+        id: t.id,
+        customerName: t.customers?.full_name || '—',
+        driverName:   t.drivers?.full_name   || '—',
+        pickup:  t.pickup_address  || '—',
+        dropoff: t.dropoff_address || '—',
+        time:    fmtTime(t.requested_at),
+        status:  t.status,
+        statusLabel: STATUS_LABEL[t.status] || t.status,
+        badge: STATUS_BADGE[t.status] || 'b-gray',
+        fare: t.fare_usd,
+        avCls: avColor(t.customers?.full_name || ''),
+        init:  initials(t.customers?.full_name || ''),
+      }))
+      setOrders(mapped)
+      setStats({
+        total:     mapped.length,
+        completed: mapped.filter(o => o.status === 'completed').length,
+        cancelled: mapped.filter(o => o.status === 'cancelled').length,
+        pending:   mapped.filter(o => o.status === 'pending').length,
+      })
+    }
+    setLoading(false)
+  }
 
   const filtered = orders.filter(o => {
     const q = search.toLowerCase()
-    const name = o.customers?.full_name?.toLowerCase() || ''
-    const route = `${o.pickup_address} ${o.dropoff_address}`.toLowerCase()
-    const matchSearch = !q || name.includes(q) || route.includes(q) || o.id.includes(q)
-    
-    const uiStatus = o.status === 'completed' ? 'Completed' :
-                     o.status === 'cancelled' ? 'Cancelled' :
-                     o.status === 'pending'   ? 'New Order' :
-                     o.status === 'dispatching' ? 'Dispatching' :
-                     o.status === 'no_driver' ? 'No Driver' : 'In progress'
-                     
-    const matchStatus = status === 'All statuses' || uiStatus === status
+    const matchSearch = !q || o.customerName.toLowerCase().includes(q) || o.pickup.toLowerCase().includes(q) || o.dropoff.toLowerCase().includes(q) || o.id.toLowerCase().includes(q) || o.driverName.toLowerCase().includes(q)
+    const matchStatus = statusFilter === 'All statuses' || o.statusLabel === statusFilter
     return matchSearch && matchStatus
   })
 
@@ -79,93 +112,77 @@ export default function Orders() {
     <div>
       <div className="search-row">
         <input
-          placeholder="Search by customer, route, or order ID..."
-          style={{ flex:1 }}
+          placeholder="Search by customer, route, driver or order ID..."
+          style={{ flex: 1 }}
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        <select value={status} onChange={e => setStatus(e.target.value)}>
+        <select value={statusFilter} onChange={e => setStatus(e.target.value)}>
           <option>All statuses</option>
-          <option>New Order</option>
-          <option>Dispatching</option>
           <option>In progress</option>
           <option>Completed</option>
           <option>Cancelled</option>
-          <option>No Driver</option>
+          <option>Pending</option>
         </select>
         <select value={period} onChange={e => setPeriod(e.target.value)}>
           <option>Today</option>
-          <option>All time</option>
+          <option>This week</option>
+          <option>This month</option>
         </select>
-        <button className="btn" onClick={() => exportCSV(filtered)}>CSV</button>
+        <button className="btn" onClick={() => exportCSV(filtered)}>Export CSV</button>
       </div>
 
-      <div className="metrics metrics-4b" style={{ marginBottom:18 }}>
-        <div className="metric"><div className="m-label">Total trips</div><div className="m-val">{stats.total}</div></div>
+      <div className="metrics metrics-4b" style={{ marginBottom: 18 }}>
+        <div className="metric"><div className="m-label">Total</div><div className="m-val">{stats.total}</div></div>
         <div className="metric"><div className="m-label">Completed</div><div className="m-val m-up">{stats.completed}</div></div>
         <div className="metric"><div className="m-label">Cancelled</div><div className="m-val m-dn">{stats.cancelled}</div></div>
-        <div className="metric"><div className="m-label">No driver</div><div className="m-val m-yellow">{stats.no_driver}</div></div>
+        <div className="metric"><div className="m-label">Pending</div><div className="m-val m-yellow">{stats.pending}</div></div>
       </div>
 
       <div className="table-wrap">
-        <div className="table-head" style={{ gridTemplateColumns:COL }}>
+        <div className="table-head" style={{ gridTemplateColumns: COL }}>
           #<span>Customer</span><span>Route</span><span>Driver</span><span>Time</span><span>Status</span>
         </div>
-        {loading ? (
-          <div style={{ padding:40, textAlign:'center', color:'var(--text-ter)' }}>Loading trips...</div>
-        ) : filtered.length === 0 ? (
-          <div style={{ padding:'24px 16px', textAlign:'center', fontSize:13, color:'var(--text-ter)' }}>
-            <div style={{fontSize:24,marginBottom:8}}>🔍</div>
-            No orders match your search.
-          </div>
-        ) : filtered.map(o => {
-          const uiStatus = o.status === 'completed' ? 'Completed' : 
-                           o.status === 'cancelled' ? 'Cancelled' :
-                           o.status === 'pending'   ? 'New Order' :
-                           o.status === 'no_driver' ? 'No Driver' :
-                           o.status === 'dispatching' ? 'Dispatching' : 'In progress'
-          const badge = o.status === 'completed' ? 'b-green' :
-                        o.status === 'cancelled' ? 'b-red' :
-                        o.status === 'pending' || o.status === 'no_driver' ? 'b-yellow' :
-                        o.status === 'dispatching' ? 'b-amber' : 'b-amber'
 
-          return (
-            <div
-              className="table-row"
-              key={o.id}
-              style={{
-                gridTemplateColumns:COL,
-                background: selected === o.id ? 'rgba(245,184,0,.06)' : undefined,
-                borderLeft: selected === o.id ? '3px solid var(--yellow)' : '3px solid transparent',
-              }}
-              onClick={() => setSelected(selected === o.id ? null : o.id)}
-            >
-              <span style={{ fontSize:10, color:'var(--text-ter)' }}>{o.id.slice(0,5)}</span>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <div className="av av-y av-sm">{(o.customers?.full_name || '?')[0]}</div>
-                <span style={{ fontSize:13, fontWeight:600 }}>{o.customers?.full_name || 'Customer'}</span>
-              </div>
-              <span style={{ fontSize:11, color:'var(--text-ter)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                {o.pickup_address.split(',')[0]} → {o.dropoff_address.split(',')[0]}
-              </span>
-              <span style={{ fontSize:12, color:'var(--text-sec)' }}>{o.drivers?.full_name || '—'}</span>
-              <span style={{ fontSize:11, color:'var(--text-ter)' }}>{new Date(o.requested_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-              <span className={`badge ${badge}`}>{uiStatus}</span>
+        {loading ? (
+          <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-ter)', fontSize: 13 }}>Loading orders…</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-ter)' }}>
+            <div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>
+            No orders match your search.
+            <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: 'var(--yellow)', cursor: 'pointer' }} onClick={() => { setSearch(''); setStatus('All statuses') }}>
+              Clear filters
+            </span>
+          </div>
+        ) : filtered.map(o => (
+          <div
+            className="table-row"
+            key={o.id}
+            style={{
+              gridTemplateColumns: COL,
+              background: selected === o.id ? 'rgba(245,184,0,.06)' : undefined,
+              borderLeft: selected === o.id ? '3px solid var(--yellow)' : '3px solid transparent',
+            }}
+            onClick={() => setSelected(selected === o.id ? null : o.id)}
+          >
+            <span style={{ fontSize: 10, color: 'var(--text-ter)', fontFamily: 'monospace' }}>{o.id.slice(0, 5)}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className={`av av-sm ${o.avCls}`}>{o.init}</div>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{o.customerName}</span>
             </div>
-          )
-        })}
+            <span style={{ fontSize: 12, color: 'var(--text-ter)' }}>{o.pickup} → {o.dropoff}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-sec)' }}>{o.driverName}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-ter)' }}>{o.time}</span>
+            <span className={`badge ${o.badge}`}>{o.statusLabel}</span>
+          </div>
+        ))}
       </div>
 
-
-      {/* Result count */}
       {filtered.length > 0 && (
-        <div style={{marginTop:10,fontSize:11,color:'var(--text-ter)',textAlign:'right'}}>
+        <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-ter)', textAlign: 'right' }}>
           Showing {filtered.length} of {orders.length} orders
-          {(search || status !== 'All statuses') && (
-            <span
-              style={{marginLeft:8,color:'var(--yellow)',cursor:'pointer'}}
-              onClick={() => { setSearch(''); setStatus('All statuses') }}
-            >
+          {(search || statusFilter !== 'All statuses') && (
+            <span style={{ marginLeft: 8, color: 'var(--yellow)', cursor: 'pointer' }} onClick={() => { setSearch(''); setStatus('All statuses') }}>
               Clear filters
             </span>
           )}

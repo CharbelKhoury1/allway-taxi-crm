@@ -1,290 +1,251 @@
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
+const AV_COLORS = ['av-y', 'av-r', 'av-b', 'av-g', 'av-p']
+function avColor(name = '') {
+  let h = 0; for (const c of name) h += c.charCodeAt(0)
+  return AV_COLORS[h % AV_COLORS.length]
+}
+function initials(name = '') {
+  return (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+}
+function fmtTime(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+function fmtRelative(iso) {
+  if (!iso) return ''
+  const diff = Date.now() - new Date(iso)
+  if (diff < 60000)    return 'Just now'
+  if (diff < 3600000)  return `${Math.floor(diff / 60000)}m ago`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
 export default function Chats() {
-  const [active, setActive]       = useState(null)
-  const [conversations, setConvs] = useState([])
+  const [convs, setConvs]         = useState([])
   const [messages, setMessages]   = useState([])
-  const [loading, setLoading]     = useState(true)
+  const [active, setActive]       = useState(null)
   const [reply, setReply]         = useState('')
   const [search, setSearch]       = useState('')
+  const [loading, setLoading]     = useState(true)
+  const [sending, setSending]     = useState(false)
   const messagesEndRef             = useRef(null)
+  const channelRef                 = useRef(null)
 
+  // ── Load conversations ────────────────────────────────────────
   useEffect(() => {
-    async function fetchChats() {
+    async function loadConvs() {
       const { data } = await supabase
         .from('conversations')
-        .select('*, customers(full_name, phone)')
-        .order('last_message_at', { ascending: false })
-
-      if (data && data.length > 0) {
+        .select('id, customer_id, customer_phone, last_message, updated_at, customers(full_name)')
+        .order('updated_at', { ascending: false })
+      if (data) {
         setConvs(data)
-        if (!active) setActive(data[0].id)
+        if (data.length > 0 && !active) setActive(data[0])
       }
       setLoading(false)
     }
-    fetchChats()
+    loadConvs()
 
-    const sub = supabase.channel('msgs').on('postgres_changes', {
-      event: 'INSERT', schema: 'public', table: 'messages'
-    }, () => fetchChats()).subscribe()
-
-    return () => supabase.removeChannel(sub)
+    // Real-time: new/updated conversations
+    const ch = supabase.channel('crm-convs')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => {
+        loadConvs()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
   }, [])
 
+  // ── Load messages when active conversation changes ────────────
   useEffect(() => {
     if (!active) return
-    async function fetchMessages() {
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', active)
-        .order('sent_at', { ascending: true })
-      if (data) setMessages(data)
-    }
-    fetchMessages()
-  }, [active])
+    setMessages([])
 
+    supabase
+      .from('messages')
+      .select('id, direction, body, created_at')
+      .eq('conversation_id', active.id)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => { if (data) setMessages(data) })
+
+    // Unsubscribe from previous channel
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current)
+    }
+
+    // Subscribe to new messages in this conversation
+    channelRef.current = supabase
+      .channel(`chat-msgs-${active.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${active.id}` },
+        ({ new: msg }) => {
+          setMessages(prev => {
+            if (prev.some(m => m.id === msg.id)) return prev
+            return [...prev, msg]
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+    }
+  }, [active?.id])
+
+  // ── Auto-scroll ───────────────────────────────────────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // ── Send message ──────────────────────────────────────────────
   async function send() {
     const text = reply.trim()
-    if (!text || !active) return
-    const tempMsg = { direction: 'outbound', body: text, sent_at: new Date().toISOString(), sender: 'dispatcher' }
-    setMessages(prev => [...prev, tempMsg])
+    if (!text || !active || sending) return
+    setSending(true)
     setReply('')
-    await supabase.from('messages').insert({
-      conversation_id: active,
-      direction: 'outbound',
-      sender: 'dispatcher',
-      body: text
-    })
+
+    const now = new Date().toISOString()
+
+    // Optimistically add to UI
+    const optimistic = { id: `tmp-${Date.now()}`, direction: 'outbound', body: text, created_at: now }
+    setMessages(prev => [...prev, optimistic])
+
+    await Promise.all([
+      supabase.from('messages').insert({ conversation_id: active.id, direction: 'outbound', body: text, created_at: now }),
+      supabase.from('conversations').update({ last_message: text, updated_at: now }).eq('id', active.id),
+    ])
+    setSending(false)
   }
 
-  async function assignAgent() {
-    if (!active) return
-    await supabase.from('conversations')
-      .update({ status: 'needs_human', fallback_to_human: true })
-      .eq('id', active)
-    setConvs(prev => prev.map(c =>
-      c.id === active ? { ...c, status: 'needs_human', fallback_to_human: true } : c
-    ))
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
-  async function markResolved() {
-    if (!active) return
-    await supabase.from('conversations')
-      .update({ status: 'resolved', fallback_to_human: false })
-      .eq('id', active)
-    setConvs(prev => prev.map(c =>
-      c.id === active ? { ...c, status: 'resolved', fallback_to_human: false } : c
-    ))
+  function handleConvClick(conv) {
+    setActive(conv)
+    setReply('')
   }
 
-  async function markUnread() {
-    if (!active) return
-    await supabase.from('conversations')
-      .update({ status: 'active', fallback_to_human: false })
-      .eq('id', active)
-    setConvs(prev => prev.map(c =>
-      c.id === active ? { ...c, status: 'active', fallback_to_human: false } : c
-    ))
-  }
+  const filteredConvs = convs.filter(c => {
+    if (!search) return true
+    const name = c.customers?.full_name || ''
+    return name.toLowerCase().includes(search.toLowerCase())
+  })
 
-  const filteredConvs = conversations.filter(c =>
-    !search || c.customers?.full_name?.toLowerCase().includes(search.toLowerCase())
-  )
-
-  if (loading) return (
-    <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-ter)' }}>
-      Loading conversations...
-    </div>
-  )
-
-  if (conversations.length === 0) {
-    return (
-      <div className="card" style={{ minHeight: 500, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 40 }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>💬</div>
-        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-pri)', marginBottom: 8 }}>No active conversations</div>
-        <p style={{ fontSize: 13, color: 'var(--text-ter)', maxWidth: 400, margin: '0 auto 24px', lineHeight: 1.6 }}>
-          When customers message your AI Agent via WhatsApp, their conversations will appear here live.
-        </p>
-      </div>
-    )
-  }
-
-  const activeConv  = conversations.find(c => c.id === active)
-  const isResolved  = activeConv?.status === 'resolved'
-  const needsHuman  = activeConv?.status === 'needs_human'
+  const head = active ? {
+    name:  active.customers?.full_name || active.customer_phone,
+    phone: active.customer_phone,
+    cls:   avColor(active.customers?.full_name || ''),
+    init:  initials(active.customers?.full_name || active.customer_phone || ''),
+  } : null
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20, alignItems: 'start' }}>
 
-      {/* ── Conversation List ─────────────────────── */}
+      {/* ── Conversation list ── */}
       <div className="chat-list">
         <div className="chat-search">
-          <input placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input
+            placeholder="Search conversations..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
         </div>
-        <div className="chat-section-label">All conversations</div>
+        <div className="chat-section-label">{convs.length} conversations</div>
 
-        {filteredConvs.map(c => {
-          const isUrgent = c.status === 'needs_human'
+        {loading ? (
+          <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'var(--text-ter)' }}>Loading…</div>
+        ) : filteredConvs.length === 0 ? (
+          <div style={{ padding: '14px', textAlign: 'center', fontSize: 12, color: 'var(--text-ter)' }}>No conversations found.</div>
+        ) : filteredConvs.map(c => {
+          const name = c.customers?.full_name || c.customer_phone
+          const isActive = active?.id === c.id
           return (
             <div
               key={c.id}
-              className={`chat-item${isUrgent ? ' alert' : ''}`}
-              style={{ background: active === c.id ? 'var(--surface2)' : undefined }}
-              onClick={() => setActive(c.id)}
+              className="chat-item"
+              style={{
+                background: isActive ? 'var(--surface2)' : undefined,
+                outline: isActive ? '1px solid rgba(255,255,255,.1)' : undefined,
+              }}
+              onClick={() => handleConvClick(c)}
             >
               <div className="chat-top">
-                {/* Name + pulsing red dot for urgent */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {isUrgent && (
-                    <div style={{
-                      width: 7, height: 7, borderRadius: '50%',
-                      background: '#E24B4A',
-                      boxShadow: '0 0 7px #E24B4A',
-                      animation: 'pulse 1.2s ease-in-out infinite',
-                      flexShrink: 0,
-                    }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <div className={`av av-sm ${avColor(name)}`}>{initials(name)}</div>
+                  <span className="chat-name">{name}</span>
+                  {isActive && (
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--yellow)', display: 'inline-block', flexShrink: 0 }} />
                   )}
-                  <span className="chat-name" style={isUrgent ? { color: '#F09595' } : {}}>
-                    {c.customers?.full_name || 'Anonymous'}
-                  </span>
                 </div>
-                <span className="chat-time">
-                  {new Date(c.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
+                <span className="chat-time">{fmtRelative(c.updated_at)}</span>
               </div>
-
-              <div className={`chat-prev ${isUrgent ? 'red' : ''}`}>
-                {isUrgent ? '⚠ Needs human attention' : (c.status === 'resolved' ? 'Resolved' : 'Handled by AI')}
-              </div>
+              <div className="chat-prev">{c.last_message}</div>
             </div>
           )
         })}
       </div>
 
-      {/* ── Chat Window ──────────────────────────── */}
-      <div className="chat-window">
-
-        {/* Header */}
-        <div className="chat-window-head">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div className={`av ${needsHuman ? 'av-r' : 'av-y'}`}>
-              {activeConv?.customers?.full_name?.[0]}
-            </div>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-pri)' }}>
-                {activeConv?.customers?.full_name}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-ter)' }}>
-                {activeConv?.customers?.phone}
-              </div>
-            </div>
-          </div>
-
-          {/* Status badge + action button */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className={`badge ${needsHuman ? 'b-red' : isResolved ? 'b-gray' : 'b-green'}`}>
-              {needsHuman ? '⚠ NEEDS HUMAN' : isResolved ? 'RESOLVED' : 'AI ACTIVE'}
-            </span>
-
-            {isResolved ? (
-              <button
-                className="btn"
-                style={{ fontSize: 11, padding: '5px 12px', borderColor: 'var(--border2)', color: 'var(--text-sec)' }}
-                onClick={markUnread}
-              >
-                📥 Mark Unread
-              </button>
-            ) : needsHuman ? (
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  className="btn"
-                  style={{ fontSize: 11, padding: '5px 12px', background: 'rgba(93,202,165,.12)', borderColor: 'rgba(93,202,165,.35)', color: '#5DCAA5' }}
-                  onClick={markResolved}
-                >
-                  ✓ Mark Resolved
-                </button>
-                <button
-                  className="btn"
-                  style={{ fontSize: 11, padding: '5px 12px', borderColor: 'var(--border2)', color: 'var(--text-sec)' }}
-                  onClick={markUnread}
-                >
-                  📥 Mark Unread
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  className="btn"
-                  style={{ fontSize: 11, padding: '5px 12px', borderColor: 'rgba(224,75,74,.4)', color: '#F09595' }}
-                  onClick={assignAgent}
-                >
-                  🚨 Assign Agent
-                </button>
-                <button
-                  className="btn"
-                  style={{ fontSize: 11, padding: '5px 12px', borderColor: 'var(--border2)' }}
-                  onClick={markResolved}
-                >
-                  Mark Resolved
-                </button>
-              </div>
-            )}
-          </div>
+      {/* ── Chat window ── */}
+      {!head ? (
+        <div className="chat-window" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, color: 'var(--text-ter)', fontSize: 13 }}>
+          {loading ? 'Loading conversations…' : 'No conversations yet'}
         </div>
-
-        {/* Urgent attention banner */}
-        {needsHuman && (
-          <div style={{
-            padding: '10px 16px',
-            background: 'rgba(224,75,74,.08)',
-            borderBottom: '1px solid rgba(224,75,74,.2)',
-            display: 'flex', alignItems: 'center', gap: 10,
-          }}>
-            <div style={{
-              width: 7, height: 7, borderRadius: '50%',
-              background: '#E24B4A',
-              boxShadow: '0 0 7px #E24B4A',
-              animation: 'pulse 1.2s ease-in-out infinite',
-              flexShrink: 0,
-            }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#F09595' }}>
-              This customer is requesting a human agent — please assign someone to take over this conversation.
-            </span>
-          </div>
-        )}
-
-        {/* Messages */}
-        <div className="messages">
-          {messages.map((m, i) => (
-            <div key={i} className={`msg msg-${m.direction === 'inbound' ? 'in' : 'out'}`}>
-              <div className="msg-bubble">{m.body}</div>
-              <div className="msg-time">
-                {new Date(m.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      ) : (
+        <div className="chat-window">
+          {/* Header */}
+          <div className="chat-window-head" style={{ padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div className={`av ${head.cls}`} style={{ width: 40, height: 40, fontSize: 14 }}>{head.init}</div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-pri)' }}>{head.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-ter)' }}>{head.phone}</div>
               </div>
             </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
+            <span className="badge b-green" style={{ padding: '4px 12px', fontSize: '11px' }}>Active</span>
+          </div>
 
-        {/* Reply bar */}
-        <div className="chat-reply">
-          <input
-            placeholder="Type a reply..."
-            value={reply}
-            onChange={e => setReply(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && send()}
-          />
-          <button className="btn btn-primary" onClick={send} disabled={!reply.trim()}>
-            Send
-          </button>
+          {/* Messages */}
+          <div className="messages" style={{ gap: '14px', padding: '20px' }}>
+            {messages.length === 0 ? (
+              <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-ter)', padding: '20px 0' }}>No messages yet</div>
+            ) : messages.map((m, i) => (
+              <div key={m.id || i} className={`msg msg-${m.direction === 'outbound' ? 'out' : 'in'}`} style={{ marginBottom: '4px' }}>
+                <div className="msg-bubble" style={{ padding: '12px 16px', fontSize: '14px', lineHeight: '1.6' }}>
+                  {m.body}
+                </div>
+                <div className="msg-time" style={{ marginTop: '6px', fontSize: '11px' }}>
+                  {fmtTime(m.created_at)}{m.direction === 'outbound' ? ' · Dispatcher' : ''}
+                </div>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Reply box */}
+          <div className="chat-reply">
+            <input
+              placeholder={`Reply to ${head.name} as Allway Taxi dispatcher...`}
+              value={reply}
+              onChange={e => setReply(e.target.value)}
+              onKeyDown={handleKey}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={send}
+              disabled={!reply.trim() || sending}
+              style={{ opacity: reply.trim() && !sending ? 1 : 0.5, cursor: reply.trim() && !sending ? 'pointer' : 'default' }}
+            >
+              Send
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
