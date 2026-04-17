@@ -6,47 +6,111 @@ function todayStart() {
 }
 
 export default function Analytics() {
-  const [metrics, setMetrics]   = useState({ revenue: 0, avgMin: 0, cancelRate: 0 })
+  const [metrics, setMetrics]   = useState({ revenue: 0, avgMin: 0, cancelRate: 0, trips: 0 })
   const [zones, setZones]       = useState([])
   const [topDrivers, setTopDrivers] = useState([])
   const [weekly, setWeekly]     = useState([])
+  const [drivers, setDrivers]   = useState([])
   const [loading, setLoading]   = useState(true)
+  
+  // Filters
+  const [timeRange, setTimeRange] = useState('Last 30 Days')
+  const [driverFilter, setDriverFilter] = useState('All Drivers')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate]   = useState('')
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, [timeRange, driverFilter, startDate, endDate])
+
+  // Listen for the "Export report" button in the topbar
+  useEffect(() => {
+    function handleExport() {
+      const lines = [
+        ['Allway Taxi — Analytics Report', '', '', ''],
+        ['Generated', new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), '', ''],
+        ['', '', '', ''],
+        ['DAILY METRICS', '', '', ''],
+        ['Time Range', timeRange, '', ''],
+        ['Driver Filter', driverFilter === 'All Drivers' ? 'All' : drivers.find(d => d.id === driverFilter)?.full_name || 'Unknown', '', ''],
+        ['Total Revenue', `$${metrics.revenue.toLocaleString()}`, '', ''],
+        ['Total Trips', metrics.trips, '', ''],
+        ['Avg trip time', metrics.avgMin > 0 ? `${metrics.avgMin} min` : '—', '', ''],
+        ['Cancellation rate', `${metrics.cancelRate}%`, '', ''],
+        ['', '', '', ''],
+        ['REVENUE TREND', '', '', ''],
+        ['Label', 'Revenue', '', ''],
+        ...(weekly.bars || []).map(b => [b.l, `$${b.rev ?? 0}`, '', '']),
+        ['', '', '', ''],
+        ['TOP PICKUP ZONES', '', '', ''],
+        ['Zone', 'Trips', '', ''],
+        ...(zones || []).map(z => [z.name, z.trips, '', '']),
+        ['', '', '', ''],
+        ['TOP DRIVERS', '', '', ''],
+        ['Rank', 'Driver', 'Completed Trips', ''],
+        ...(topDrivers || []).map(d => [d.rank, d.name, d.count, '']),
+      ]
+      const csv = lines.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `allway-analytics-${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+    window.addEventListener('export-analytics', handleExport)
+    return () => window.removeEventListener('export-analytics', handleExport)
+  }, [metrics, weekly, zones, topDrivers, timeRange, driverFilter, drivers])
 
   async function loadAll() {
-    const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-    const sevenDaysAgo  = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    setLoading(true)
+    let from = null
+    let to   = null
+    const now = new Date()
 
-    const [allTripsRes, driversRes] = await Promise.all([
-      supabase
-        .from('trips')
-        .select('id, status, fare_usd, pickup_address, driver_id, accepted_at, completed_at, requested_at, drivers(full_name)')
-        .gte('requested_at', thirtyDaysAgo.toISOString()),
-      supabase
-        .from('drivers')
-        .select('id, full_name'),
+    if (timeRange === 'Today') {
+      const d = new Date(); d.setHours(0,0,0,0); from = d.toISOString()
+    } else if (timeRange === 'Last 7 Days') {
+      const d = new Date(); d.setDate(now.getDate() - 7); from = d.toISOString()
+    } else if (timeRange === 'Last 30 Days') {
+      const d = new Date(); d.setDate(now.getDate() - 30); from = d.toISOString()
+    } else if (timeRange === 'Custom' && startDate) {
+      from = new Date(startDate).toISOString()
+      if (endDate) {
+        const ed = new Date(endDate); ed.setHours(23,59,59,999); to = ed.toISOString()
+      }
+    }
+
+    let query = supabase
+      .from('trips')
+      .select('id, status, fare_usd, pickup_address, driver_id, accepted_at, completed_at, requested_at, drivers(full_name)')
+    
+    if (from) query = query.gte('requested_at', from)
+    if (to)   query = query.lte('requested_at', to)
+    if (driverFilter !== 'All Drivers') query = query.eq('driver_id', driverFilter)
+
+    const [tripsRes, driversRes] = await Promise.all([
+      query.order('requested_at', { ascending: false }),
+      supabase.from('drivers').select('id, full_name').order('full_name'),
     ])
 
-    const trips   = allTripsRes.data || []
-    const drivers = driversRes.data  || []
+    const trips = tripsRes.data || []
+    const drvs  = driversRes.data || []
+    setDrivers(drvs)
 
     // ── Metrics ──────────────────────────────────────────────
-    const today      = todayStart()
-    const todayTrips = trips.filter(t => new Date(t.requested_at) >= today)
-    const todayRev   = todayTrips.filter(t => t.status === 'completed').reduce((s, t) => s + Number(t.fare_usd || 0), 0)
-
-    // Avg trip time (minutes) from accepted→completed
-    const timed = trips.filter(t => t.status === 'completed' && t.accepted_at && t.completed_at)
+    const completed = trips.filter(t => t.status === 'completed')
+    const revenue   = completed.reduce((s, t) => s + Number(t.fare_usd || 0), 0)
+    
+    const timed = completed.filter(t => t.accepted_at && t.completed_at)
     const avgMin = timed.length
       ? Math.round(timed.reduce((s, t) => s + (new Date(t.completed_at) - new Date(t.accepted_at)) / 60000, 0) / timed.length)
       : 0
 
-    // Cancellation rate (last 7 days)
-    const recentTrips    = trips.filter(t => new Date(t.requested_at) >= sevenDaysAgo)
-    const cancelRate     = recentTrips.length ? ((recentTrips.filter(t => t.status === 'cancelled').length / recentTrips.length) * 100).toFixed(1) : 0
+    const cancelRate = trips.length 
+      ? ((trips.filter(t => t.status === 'cancelled').length / trips.length) * 100).toFixed(1) 
+      : 0
 
-    setMetrics({ revenue: Math.round(todayRev), avgMin, cancelRate })
+    setMetrics({ revenue: Math.round(revenue), avgMin, cancelRate, trips: trips.length })
 
     // ── Top pickup zones ──────────────────────────────────────
     const zoneCounts = {}
@@ -59,14 +123,14 @@ export default function Analytics() {
     const maxZone = sortedZones[0]?.[1] || 1
     setZones(sortedZones.map(([name, count]) => ({ name, trips: count, pct: Math.round((count / maxZone) * 100) })))
 
-    // ── Top drivers this month ────────────────────────────────
+    // ── Top drivers ────────────────────────────────
     const driverTrips = {}
-    trips.filter(t => t.status === 'completed').forEach(t => {
+    completed.forEach(t => {
       if (!t.driver_id) return
       driverTrips[t.driver_id] = (driverTrips[t.driver_id] || 0) + 1
     })
     const driverMap = {}
-    drivers.forEach(d => { driverMap[d.id] = d.full_name })
+    drvs.forEach(d => { driverMap[d.id] = d.full_name })
     const sortedDrivers = Object.entries(driverTrips).sort((a, b) => b[1] - a[1]).slice(0, 5)
     const AV_COLORS = ['av-y', 'av-g', 'av-b', 'av-p', 'av-r']
     setTopDrivers(sortedDrivers.map(([id, count], i) => ({
@@ -78,22 +142,25 @@ export default function Analytics() {
       gold: i < 3,
     })))
 
-    // ── Last 7 days revenue by day ────────────────────────────
+    // ── Weekly Chart (last 7 data points) ────────────────────────────
+    // If range is large, show by week, if small show by day
     const dayRevenue = {}
     const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0)
-      dayRevenue[d.toDateString()] = { label: i === 0 ? 'Today' : DAYS[d.getDay()], rev: 0 }
-    }
-    trips.filter(t => t.status === 'completed' && t.completed_at).forEach(t => {
+    
+    // Group by day
+    completed.filter(t => t.completed_at).forEach(t => {
       const d = new Date(t.completed_at); d.setHours(0, 0, 0, 0)
       const key = d.toDateString()
-      if (dayRevenue[key]) dayRevenue[key].rev += Number(t.fare_usd || 0)
+      if (!dayRevenue[key]) dayRevenue[key] = { label: DAYS[d.getDay()], rev: 0, rawDate: d }
+      dayRevenue[key].rev += Number(t.fare_usd || 0)
     })
-    const weekData = Object.values(dayRevenue)
-    const maxRev = Math.max(...weekData.map(d => d.rev), 1)
-    const totalWeekRev = weekData.reduce((s, d) => s + d.rev, 0)
-    setWeekly({ bars: weekData.map(d => ({ l: d.label, h: Math.round((d.rev / maxRev) * 100), p: d.rev >= maxRev * 0.8 })), total: Math.round(totalWeekRev) })
+    
+    const sortedDays = Object.values(dayRevenue).sort((a, b) => a.rawDate - b.rawDate).slice(-7)
+    const maxRev = Math.max(...sortedDays.map(d => d.rev), 1)
+    setWeekly({ 
+      bars: sortedDays.map(d => ({ l: d.label, h: Math.round((d.rev / maxRev) * 100), p: d.rev >= maxRev * 0.8, rev: Math.round(d.rev) })), 
+      total: Math.round(revenue) 
+    })
 
     setLoading(false)
   }
@@ -108,26 +175,93 @@ export default function Analytics() {
 
   return (
     <div>
+      <div className="search-row" style={{ marginBottom: 18, background: 'var(--surface)', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-ter)', marginLeft: 2 }}>TIME RANGE</span>
+            <select 
+              value={timeRange} 
+              onChange={e => setTimeRange(e.target.value)}
+              style={{ padding: '6px 12px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-pri)', outline: 'none' }}
+            >
+              <option>Today</option>
+              <option>Last 7 Days</option>
+              <option>Last 30 Days</option>
+              <option>All Time</option>
+              <option>Custom</option>
+            </select>
+          </div>
+
+          {timeRange === 'Custom' && (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-ter)', marginLeft: 2 }}>START DATE</span>
+                <input 
+                  type="date" 
+                  value={startDate} 
+                  onChange={e => setStartDate(e.target.value)}
+                  style={{ padding: '5px 10px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-pri)', outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-ter)', marginLeft: 2 }}>END DATE</span>
+                <input 
+                  type="date" 
+                  value={endDate} 
+                  onChange={e => setEndDate(e.target.value)}
+                  style={{ padding: '5px 10px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-pri)', outline: 'none' }}
+                />
+              </div>
+            </>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-ter)', marginLeft: 2 }}>DRIVER</span>
+            <select 
+              value={driverFilter} 
+              onChange={e => setDriverFilter(e.target.value)}
+              style={{ padding: '6px 12px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-pri)', outline: 'none', minWidth: 140 }}
+            >
+              <option>All Drivers</option>
+              {drivers.map(d => (
+                <option key={d.id} value={d.id}>{d.full_name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'flex-end' }}>
+             {loading && <div style={{ fontSize: 11, color: 'var(--text-ter)', fontStyle: 'italic' }}>Refreshing…</div>}
+             <button 
+               className="btn" 
+               onClick={() => { setTimeRange('Last 30 Days'); setDriverFilter('All Drivers'); setStartDate(''); setEndDate(''); }}
+               style={{ fontSize: 11, padding: '6px 12px' }}
+             >
+               Reset
+             </button>
+          </div>
+        </div>
+      </div>
+
       <div className="metrics">
         <div className="metric">
-          <div className="m-label">Revenue today</div>
-          <div className="m-val">${metrics.revenue}</div>
-          <div className="m-sub">completed trips</div>
+          <div className="m-label">Total revenue</div>
+          <div className="m-val">${metrics.revenue.toLocaleString()}</div>
+          <div className="m-sub">for selected period</div>
+        </div>
+        <div className="metric">
+          <div className="m-label">Total trips</div>
+          <div className="m-val">{metrics.trips}</div>
+          <div className="m-sub">{timeRange}</div>
         </div>
         <div className="metric">
           <div className="m-label">Avg trip time</div>
           <div className="m-val">{metrics.avgMin > 0 ? `${metrics.avgMin} min` : '—'}</div>
-          <div className="m-sub">accepted → complete</div>
+          <div className="m-sub">efficiency</div>
         </div>
         <div className="metric">
           <div className="m-label">Cancellation rate</div>
-          <div className="m-val">{metrics.cancelRate}%</div>
-          <div className="m-sub">last 7 days</div>
-        </div>
-        <div className="metric">
-          <div className="m-label">Revenue this week</div>
-          <div className="m-val">${weekly.total || 0}</div>
-          <div className="m-sub">last 7 days</div>
+          <div className="m-val m-dn">{metrics.cancelRate}%</div>
+          <div className="m-sub">orders cancelled</div>
         </div>
       </div>
 
@@ -136,7 +270,7 @@ export default function Analytics() {
         <div className="card">
           <div className="card-head">
             <span className="card-title">Top pickup zones</span>
-            <span className="card-meta">Last 30 days</span>
+            <span className="card-meta">{timeRange}</span>
           </div>
           <div style={{ padding: '14px 16px' }}>
             {zones.length === 0 ? (
@@ -158,7 +292,8 @@ export default function Analytics() {
         {/* Top drivers */}
         <div className="card">
           <div className="card-head">
-            <span className="card-title">Top drivers this month</span>
+            <span className="card-title">Top drivers</span>
+            <span className="card-meta">{timeRange}</span>
           </div>
           <div style={{ padding: '4px 0' }}>
             {topDrivers.length === 0 ? (
@@ -178,8 +313,8 @@ export default function Analytics() {
       {/* Revenue chart */}
       <div className="card">
         <div className="card-head">
-          <span className="card-title">Revenue — last 7 days</span>
-          <span className="card-meta">Total: ${weekly.total || 0}</span>
+          <span className="card-title">Revenue trend</span>
+          <span className="card-meta">Showing last {weekly.bars?.length || 0} data points</span>
         </div>
         <div className="chart-wrap">
           <div className="bars" style={{ height: 80 }}>

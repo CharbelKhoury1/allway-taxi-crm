@@ -32,19 +32,21 @@ export default function Loyalty() {
   const [metrics, setMetrics]   = useState({ totalPts: 0, members: 0, goldPlus: 0 })
   const [tierCounts, setTierCounts] = useState([])
   const [topMembers, setTopMembers] = useState([])
+  const [search, setSearch]     = useState('')
+  const [tierFilter, setTierFilter] = useState('All')
 
   useEffect(() => {
     async function load() {
       const { data } = await supabase
         .from('loyalty_accounts')
-        .select('id, customer_id, points, tier, lifetime_points, customers(full_name, created_at)')
-        .order('points', { ascending: false })
+        .select('id, customer_id, points_balance, tier, total_points_earned, customers(full_name, created_at)')
+        .order('points_balance', { ascending: false })
 
       if (data) {
         setAccounts(data)
 
         // Metrics
-        const totalPts = data.reduce((s, a) => s + (a.points || 0), 0)
+        const totalPts = data.reduce((s, a) => s + (a.points_balance || 0), 0)
         const goldPlus = data.filter(a => a.tier === 'gold' || a.tier === 'platinum').length
         setMetrics({ totalPts, members: data.length, goldPlus })
 
@@ -62,7 +64,7 @@ export default function Loyalty() {
         setTopMembers(data.slice(0, 5).map((a, i) => ({
           rank:  i + 1,
           name:  a.customers?.full_name || 'Unknown',
-          pts:   a.points?.toLocaleString() || '0',
+          pts:   a.points_balance?.toLocaleString() || '0',
           tier:  a.tier,
           joinDate: a.customers?.created_at ? new Date(a.customers.created_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '—',
           cls:   avColor(a.customers?.full_name || ''),
@@ -75,6 +77,13 @@ export default function Loyalty() {
     }
     load()
   }, [])
+
+  const filteredAccounts = accounts.filter(a => {
+    const name = (a.customers?.full_name || '').toLowerCase()
+    const matchQ = !search || name.includes(search.toLowerCase())
+    const matchTier = tierFilter === 'All' || a.tier === tierFilter.toLowerCase()
+    return matchQ && matchTier
+  })
 
   if (loading) {
     return <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--text-ter)', fontSize: 13 }}>Loading loyalty data…</div>
@@ -174,25 +183,57 @@ export default function Loyalty() {
       <div className="card">
         <div className="card-head">
           <span className="card-title">All members</span>
-          <span className="card-meta">{accounts.length} total</span>
+          <span className="card-meta">{filteredAccounts.length} of {accounts.length}</span>
         </div>
+
+        {/* Search + filter row */}
+        <div style={{ display: 'flex', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+          <input
+            placeholder="Search by customer name…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ flex: 1, padding: '7px 12px', fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-pri)', fontFamily: 'var(--font)', outline: 'none' }}
+          />
+          <select
+            value={tierFilter}
+            onChange={e => setTierFilter(e.target.value)}
+            style={{ padding: '7px 10px', fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-pri)', fontFamily: 'var(--font)', outline: 'none' }}
+          >
+            <option>All</option>
+            <option>Platinum</option>
+            <option>Gold</option>
+            <option>Silver</option>
+            <option>Bronze</option>
+          </select>
+        </div>
+
         <div className="table-head" style={{ gridTemplateColumns: RCOL }}>
           Customer<span>Points</span><span>Tier</span><span>Lifetime pts</span>
         </div>
-        {accounts.map(a => {
-          const name  = a.customers?.full_name || 'Unknown'
-          const ts    = TIER_STYLE[a.tier] || {}
+        {accounts.length === 0 ? (
+          <div style={{ padding: '32px 20px', textAlign: 'center', fontSize: 13, color: 'var(--text-ter)' }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>⭐</div>
+            No loyalty members yet. Points are earned automatically when customers complete trips.
+          </div>
+        ) : filteredAccounts.length === 0 ? (
+          <div style={{ padding: '20px', textAlign: 'center', fontSize: 12, color: 'var(--text-ter)' }}>
+            No members match your filter.
+            <span style={{ display: 'block', marginTop: 6, fontSize: 11, color: 'var(--yellow)', cursor: 'pointer' }} onClick={() => { setSearch(''); setTierFilter('All') }}>Clear filters</span>
+          </div>
+        ) : filteredAccounts.map(a => {
+          const name = a.customers?.full_name || 'Unknown'
+          const ts   = TIER_STYLE[a.tier] || {}
           return (
             <div key={a.id} className="table-row" style={{ gridTemplateColumns: RCOL }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div className={`av av-sm ${avColor(name)}`}>{initials(name)}</div>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{name}</span>
               </div>
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--yellow)' }}>{a.points?.toLocaleString()}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--yellow)' }}>{(a.points_balance || 0).toLocaleString()}</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: ts.color, background: ts.bg, padding: '2px 7px', borderRadius: 10 }}>
-                {a.tier?.toUpperCase()}
+                {a.tier?.toUpperCase() || '—'}
               </span>
-              <span style={{ fontSize: 12, color: 'var(--text-sec)' }}>{a.lifetime_points?.toLocaleString()}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-sec)' }}>{(a.total_points_earned || 0).toLocaleString()}</span>
             </div>
           )
         })}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { toast } from 'sonner'
 
 const STATUS_BADGE = {
   completed:   'b-green',
@@ -19,6 +20,8 @@ const STATUS_LABEL = {
   cancelled:   'Cancelled',
 }
 
+const CANCELLABLE = ['pending', 'dispatching', 'accepted']
+
 const AV_COLORS = ['av-y', 'av-r', 'av-b', 'av-g', 'av-p']
 function avColor(name = '') {
   let h = 0; for (const c of name) h += c.charCodeAt(0)
@@ -35,7 +38,7 @@ function fmtTime(iso) {
 function exportCSV(orders) {
   const header = ['ID', 'Customer', 'Pickup', 'Dropoff', 'Driver', 'Time', 'Status', 'Fare']
   const rows = orders.map(o => [o.id, o.customerName, o.pickup, o.dropoff, o.driverName, o.time, o.statusLabel, o.fare ? `$${o.fare}` : '—'])
-  const csv = [header, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+  const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
   const blob = new Blob([csv], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -43,7 +46,7 @@ function exportCSV(orders) {
   a.click(); URL.revokeObjectURL(url)
 }
 
-const COL = '55px 1fr 1fr 90px 70px 95px'
+const COL = '55px 1fr 1fr 90px 60px 70px 95px'
 
 export default function Orders() {
   const [orders, setOrders]       = useState([])
@@ -52,9 +55,20 @@ export default function Orders() {
   const [statusFilter, setStatus] = useState('All statuses')
   const [period, setPeriod]       = useState('Today')
   const [selected, setSelected]   = useState(null)
+  const [cancelling, setCancelling] = useState(null)
   const [stats, setStats]         = useState({ total: 0, completed: 0, cancelled: 0, pending: 0 })
 
-  useEffect(() => { fetchOrders() }, [period])
+  useEffect(() => {
+    fetchOrders()
+
+    // Real-time: refresh list whenever any trip changes
+    const channel = supabase
+      .channel('crm-trips-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, fetchOrders)
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
+  }, [period]) // eslint-disable-line
 
   async function fetchOrders() {
     setLoading(true)
@@ -66,20 +80,23 @@ export default function Orders() {
       const d = new Date(now); d.setDate(now.getDate() - 7); from = d.toISOString()
     } else if (period === 'This month') {
       const d = new Date(now); d.setDate(now.getDate() - 30); from = d.toISOString()
+    } else if (period === 'All time') {
+      from = null
     }
 
     let q = supabase
       .from('trips')
-      .select('id, status, fare_usd, pickup_address, dropoff_address, requested_at, customers(full_name), drivers(full_name)')
+      .select('id, status, fare_usd, pickup_address, dropoff_address, requested_at, customers(full_name, phone), drivers(full_name)')
       .order('requested_at', { ascending: false })
     if (from) q = q.gte('requested_at', from)
 
     const { data, error } = await q
     if (!error && data) {
       const mapped = data.map(t => ({
-        id: t.id,
+        id:           t.id,
         customerName: t.customers?.full_name || '—',
-        driverName:   t.drivers?.full_name   || '—',
+        customerPhone:t.customers?.phone     || '—',
+        driverName:   t.drivers?.full_name   || 'Unassigned',
         pickup:  t.pickup_address  || '—',
         dropoff: t.dropoff_address || '—',
         time:    fmtTime(t.requested_at),
@@ -95,15 +112,36 @@ export default function Orders() {
         total:     mapped.length,
         completed: mapped.filter(o => o.status === 'completed').length,
         cancelled: mapped.filter(o => o.status === 'cancelled').length,
-        pending:   mapped.filter(o => o.status === 'pending').length,
+        pending:   mapped.filter(o => ['pending', 'dispatching'].includes(o.status)).length,
       })
     }
     setLoading(false)
   }
 
+  async function cancelOrder(tripId) {
+    setCancelling(tripId)
+    const { error } = await supabase
+      .from('trips')
+      .update({ status: 'cancelled' })
+      .eq('id', tripId)
+    if (!error) {
+      toast.success('Order cancelled')
+      setSelected(null)
+      fetchOrders()
+    } else {
+      toast.error(error.message)
+    }
+    setCancelling(null)
+  }
+
   const filtered = orders.filter(o => {
     const q = search.toLowerCase()
-    const matchSearch = !q || o.customerName.toLowerCase().includes(q) || o.pickup.toLowerCase().includes(q) || o.dropoff.toLowerCase().includes(q) || o.id.toLowerCase().includes(q) || o.driverName.toLowerCase().includes(q)
+    const matchSearch = !q ||
+      o.customerName.toLowerCase().includes(q) ||
+      o.pickup.toLowerCase().includes(q) ||
+      o.dropoff.toLowerCase().includes(q) ||
+      o.id.toLowerCase().includes(q) ||
+      o.driverName.toLowerCase().includes(q)
     const matchStatus = statusFilter === 'All statuses' || o.statusLabel === statusFilter
     return matchSearch && matchStatus
   })
@@ -128,6 +166,7 @@ export default function Orders() {
           <option>Today</option>
           <option>This week</option>
           <option>This month</option>
+          <option>All time</option>
         </select>
         <button className="btn" onClick={() => exportCSV(filtered)}>Export CSV</button>
       </div>
@@ -141,7 +180,7 @@ export default function Orders() {
 
       <div className="table-wrap">
         <div className="table-head" style={{ gridTemplateColumns: COL }}>
-          #<span>Customer</span><span>Route</span><span>Driver</span><span>Time</span><span>Status</span>
+          #<span>Customer</span><span>Route</span><span>Driver</span><span>Time</span><span>Fare</span><span>Status</span>
         </div>
 
         {loading ? (
@@ -150,30 +189,85 @@ export default function Orders() {
           <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-ter)' }}>
             <div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>
             No orders match your search.
-            <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: 'var(--yellow)', cursor: 'pointer' }} onClick={() => { setSearch(''); setStatus('All statuses') }}>
+            <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: 'var(--yellow)', cursor: 'pointer' }} onClick={() => { setSearch(''); setStatus('All statuses'); setPeriod('Today') }}>
               Clear filters
             </span>
           </div>
         ) : filtered.map(o => (
-          <div
-            className="table-row"
-            key={o.id}
-            style={{
-              gridTemplateColumns: COL,
-              background: selected === o.id ? 'rgba(245,184,0,.06)' : undefined,
-              borderLeft: selected === o.id ? '3px solid var(--yellow)' : '3px solid transparent',
-            }}
-            onClick={() => setSelected(selected === o.id ? null : o.id)}
-          >
-            <span style={{ fontSize: 10, color: 'var(--text-ter)', fontFamily: 'monospace' }}>{o.id.slice(0, 5)}</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div className={`av av-sm ${o.avCls}`}>{o.init}</div>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{o.customerName}</span>
+          <div key={o.id}>
+            {/* Main row */}
+            <div
+              className="table-row"
+              style={{
+                gridTemplateColumns: COL,
+                background: selected === o.id ? 'rgba(245,184,0,.06)' : undefined,
+                borderLeft: selected === o.id ? '3px solid var(--yellow)' : '3px solid transparent',
+                cursor: 'pointer',
+              }}
+              onClick={() => setSelected(selected === o.id ? null : o.id)}
+            >
+              <span style={{ fontSize: 10, color: 'var(--text-ter)', fontFamily: 'monospace' }}>{o.id.slice(0, 5)}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className={`av av-sm ${o.avCls}`}>{o.init}</div>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{o.customerName}</span>
+              </div>
+              <span style={{ fontSize: 12, color: 'var(--text-ter)' }}>{o.pickup.split(',')[0]} → {o.dropoff.split(',')[0]}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-sec)' }}>{o.driverName}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-ter)' }}>{o.time}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: o.fare ? 'var(--yellow)' : 'var(--text-ter)' }}>
+                {o.fare ? `$${Number(o.fare).toFixed(0)}` : '—'}
+              </span>
+              <span className={`badge ${o.badge}`}>{o.statusLabel}</span>
             </div>
-            <span style={{ fontSize: 12, color: 'var(--text-ter)' }}>{o.pickup} → {o.dropoff}</span>
-            <span style={{ fontSize: 12, color: 'var(--text-sec)' }}>{o.driverName}</span>
-            <span style={{ fontSize: 11, color: 'var(--text-ter)' }}>{o.time}</span>
-            <span className={`badge ${o.badge}`}>{o.statusLabel}</span>
+
+            {/* Expandable detail panel */}
+            {selected === o.id && (
+              <div style={{
+                padding: '12px 20px 14px',
+                background: 'rgba(245,184,0,.03)',
+                borderBottom: '1px solid var(--border)',
+                borderLeft: '3px solid var(--yellow)',
+                display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start',
+              }}>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-ter)', fontWeight: 700, marginBottom: 3 }}>PICKUP</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-pri)' }}>{o.pickup}</div>
+                </div>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-ter)', fontWeight: 700, marginBottom: 3 }}>DROPOFF</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-pri)' }}>{o.dropoff}</div>
+                </div>
+                <div style={{ minWidth: 100 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-ter)', fontWeight: 700, marginBottom: 3 }}>CUSTOMER</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-sec)' }}>{o.customerPhone}</div>
+                </div>
+                <div style={{ minWidth: 80 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-ter)', fontWeight: 700, marginBottom: 3 }}>FARE</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--yellow)' }}>{o.fare ? `$${Number(o.fare).toFixed(2)}` : '—'}</div>
+                </div>
+                {CANCELLABLE.includes(o.status) && (
+                  <button
+                    disabled={cancelling === o.id}
+                    onClick={e => { e.stopPropagation(); cancelOrder(o.id) }}
+                    style={{
+                      alignSelf: 'center',
+                      padding: '6px 14px',
+                      borderRadius: 8,
+                      border: '1px solid rgba(240,149,149,.35)',
+                      background: 'rgba(240,149,149,.07)',
+                      color: '#F09595',
+                      cursor: cancelling === o.id ? 'not-allowed' : 'pointer',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      opacity: cancelling === o.id ? 0.6 : 1,
+                      fontFamily: 'var(--font)',
+                    }}
+                  >
+                    {cancelling === o.id ? 'Cancelling…' : 'Cancel order'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -181,8 +275,8 @@ export default function Orders() {
       {filtered.length > 0 && (
         <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-ter)', textAlign: 'right' }}>
           Showing {filtered.length} of {orders.length} orders
-          {(search || statusFilter !== 'All statuses') && (
-            <span style={{ marginLeft: 8, color: 'var(--yellow)', cursor: 'pointer' }} onClick={() => { setSearch(''); setStatus('All statuses') }}>
+          {(search || statusFilter !== 'All statuses' || period !== 'Today') && (
+            <span style={{ marginLeft: 8, color: 'var(--yellow)', cursor: 'pointer' }} onClick={() => { setSearch(''); setStatus('All statuses'); setPeriod('Today') }}>
               Clear filters
             </span>
           )}

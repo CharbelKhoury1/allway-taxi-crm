@@ -35,7 +35,7 @@ export default function Dashboard({ onNavigate }) {
     // Re-fetch all online drivers every 60s as a safety net.
     // This restores any driver that was incorrectly evicted from the UI
     // due to a Realtime event delay or a missed heartbeat.
-    const refreshInterval = setInterval(fetchDrivers, 60_000)
+    const refreshInterval = setInterval(fetchDrivers, 15_000)
 
     // Periodic stale cleanup — evict drivers whose last_seen has gone stale
     // (covers the case where a driver's app died without calling goOffline)
@@ -46,18 +46,27 @@ export default function Dashboard({ onNavigate }) {
       }))
     }, 30_000)
 
-    // Real-time: any UPDATE on drivers table → refresh the map pin
+    // Real-time: any UPDATE on drivers table → re-fetch the full row and refresh the map pin.
+    // We always re-fetch because postgres_changes payloads only include changed columns when
+    // REPLICA IDENTITY is not set to FULL — relying on the partial payload causes marker data
+    // (full_name, plate, car_model) to be wiped on every location update.
     const channel = supabase
       .channel('crm-drivers-live')
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'drivers' },
-        ({ new: d }) => {
+        async ({ new: partial }) => {
+          const { data: d } = await supabase
+            .from('drivers')
+            .select('id, full_name, plate, car_model, status, online, lat, lng, last_seen')
+            .eq('id', partial.id)
+            .single()
+          if (!d) return
+
           const isRecent = d.last_seen && (Date.now() - new Date(d.last_seen).getTime()) < STALE_MS
-          const isLive = d.online && d.lat != null && d.lng != null && isRecent
-          
+          const isLive   = d.online && d.lat != null && d.lng != null && isRecent
+
           if (isLive) {
-            // Driver online with fresh location → add or update marker immediately
             const mapped = toMapDriver(d)
             setDrivers(prev => {
               const exists = prev.some(x => x.id === d.id)
@@ -67,12 +76,8 @@ export default function Dashboard({ onNavigate }) {
             })
             pushLog(`Driver ${d.full_name} — ${d.status.replace('_', ' ')} · ${d.lat?.toFixed(4)}°N`)
           } else {
-            // Driver went offline, location cleared, or last_seen is stale → remove marker
             setDrivers(prev => prev.filter(x => x.id !== d.id))
-            
-            // Clear selection if the selected driver is the one that just went offline
             setSelected(prev => (prev && prev.id === d.id) ? null : prev)
-
             if (d.online === false) pushLog(`Driver ${d.full_name} went offline`)
           }
         }
@@ -101,7 +106,7 @@ export default function Dashboard({ onNavigate }) {
 
       // Revenue
       const revenue = (revenueRes.data || []).reduce((s, t) => s + Number(t.fare_usd || 0), 0)
-      
+
       // Chart Logic (last 12 hours)
       const counts = new Array(12).fill(0)
       const now = new Date()
@@ -110,8 +115,8 @@ export default function Dashboard({ onNavigate }) {
         const diff = now.getHours() - hour
         if (diff >= 0 && diff < 12) counts[11 - diff]++
       })
-      const mappedChart = counts.map((c, i) => ({ 
-        h: Math.max(10, (c / (Math.max(...counts) || 1)) * 100), 
+      const mappedChart = counts.map((c, i) => ({
+        h: Math.max(10, (c / (Math.max(...counts) || 1)) * 100),
         l: `${(now.getHours() - (11 - i) + 24) % 24}:00`,
         p: c === Math.max(...counts) && c > 0
       }))
@@ -127,7 +132,17 @@ export default function Dashboard({ onNavigate }) {
     }
     fetchStats()
     const id = setInterval(fetchStats, 30000)
-    return () => clearInterval(id)
+
+    // Realtime: instantly update stats when any trip changes
+    const tripChannel = supabase
+      .channel('dash-trips-stats')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, fetchStats)
+      .subscribe()
+
+    return () => {
+      clearInterval(id)
+      supabase.removeChannel(tripChannel)
+    }
   }, [])
 
 
@@ -252,7 +267,7 @@ export default function Dashboard({ onNavigate }) {
                 <div className={`av ${o.status === 'on_trip' ? 'av-g' : 'av-y'}`}>{o.customers?.full_name?.[0] || 'C'}</div>
                 <div className="row-info">
                   <div className="row-name">{o.customers?.full_name || 'Customer'}</div>
-                  <div className="row-sub">{o.pickup_address.split(',')[0]} → {o.dropoff_address.split(',')[0]}</div>
+                  <div className="row-sub">{(o.pickup_address || '—').split(',')[0]} → {(o.dropoff_address || '—').split(',')[0]}</div>
                 </div>
                 <span className={`badge ${badgeMap[o.status] || 'b-gray'}`}>{statusMap[o.status] || o.status}</span>
               </div>

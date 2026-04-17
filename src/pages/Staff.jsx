@@ -1,61 +1,78 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
+import { toast } from 'sonner'
 
-const STAFF_LIST = [
-  { id:'nour',    name:'Nour Jamil',      phone:'+961 71 100 001', role:'Dispatcher', roleBadge:'b-blue',   statusBadge:'b-green', status:'Active',   cls:'av-y' },
-  { id:'rami',    name:'Rami Karam',       phone:'+961 71 100 002', role:'Dispatcher', roleBadge:'b-blue',   statusBadge:'b-green', status:'Active',   cls:'av-g' },
-  { id:'ziad',    name:'Ziad Abi Khalil',  phone:'+961 71 100 003', role:'Supervisor', roleBadge:'b-yellow', statusBadge:'b-green', status:'Active',   cls:'av-p' },
-  { id:'hiba',    name:'Hiba Mrad',        phone:'+961 71 100 004', role:'Support',    roleBadge:'b-green',  statusBadge:'b-amber', status:'On break', cls:'av-b' },
-  { id:'pierre',  name:'Pierre Gemayel',   phone:'+961 71 100 005', role:'Dispatcher', roleBadge:'b-blue',   statusBadge:'b-gray',  status:'Upcoming', cls:'av-r' },
-]
-
-const STAFF_DETAIL = {
-  nour:   { cls:'av-y', init:'NJ', name:'Nour Jamil',     role:'Dispatcher', roleBadge:'b-blue',   status:'Active',   statusBadge:'b-green', contact:'+961 71 100 001', orders:312, rating:'4.9', perf:'94%', clockIn:'8:00 AM',  clockOut:'4:00 PM',  hours:'6h 14m',
-             perms:[['View orders','b-green','Allowed'],['Assign drivers','b-green','Allowed'],['Cancel orders','b-amber','Limited'],['Manage staff','b-red','Denied'],['View analytics','b-green','Allowed']] },
-  rami:   { cls:'av-g', init:'RK', name:'Rami Karam',      role:'Dispatcher', roleBadge:'b-blue',   status:'Active',   statusBadge:'b-green', contact:'+961 71 100 002', orders:241, rating:'4.7', perf:'88%', clockIn:'9:00 AM',  clockOut:'5:00 PM',  hours:'5h 14m',
-             perms:[['View orders','b-green','Allowed'],['Assign drivers','b-green','Allowed'],['Cancel orders','b-amber','Limited'],['Manage staff','b-red','Denied'],['View analytics','b-amber','Limited']] },
-  ziad:   { cls:'av-p', init:'ZA', name:'Ziad Abi Khalil', role:'Supervisor', roleBadge:'b-yellow', status:'Active',   statusBadge:'b-green', contact:'+961 71 100 003', orders:87,  rating:'4.8', perf:'91%', clockIn:'7:00 AM',  clockOut:'3:00 PM',  hours:'7h 14m',
-             perms:[['View orders','b-green','Allowed'],['Assign drivers','b-green','Allowed'],['Cancel orders','b-green','Allowed'],['Manage staff','b-green','Allowed'],['View analytics','b-green','Allowed']] },
-  hiba:   { cls:'av-b', init:'HM', name:'Hiba Mrad',       role:'Support',    roleBadge:'b-green',  status:'On break', statusBadge:'b-amber', contact:'+961 71 100 004', orders:156, rating:'4.6', perf:'82%', clockIn:'10:00 AM', clockOut:'6:00 PM',  hours:'4h 14m',
-             perms:[['View orders','b-green','Allowed'],['Assign drivers','b-red','Denied'],['Cancel orders','b-red','Denied'],['Manage staff','b-red','Denied'],['View analytics','b-amber','Limited']] },
-  pierre: { cls:'av-r', init:'PG', name:'Pierre Gemayel',  role:'Dispatcher', roleBadge:'b-blue',   status:'Upcoming', statusBadge:'b-gray',  contact:'+961 71 100 005', orders:98,  rating:'4.5', perf:'74%', clockIn:'2:00 PM',  clockOut:'10:00 PM', hours:'—',
-             perms:[['View orders','b-green','Allowed'],['Assign drivers','b-green','Allowed'],['Cancel orders','b-amber','Limited'],['Manage staff','b-red','Denied'],['View analytics','b-red','Denied']] },
+const ROLE_BADGE = {
+  admin:      'b-yellow',
+  manager:    'b-yellow',
+  dispatcher: 'b-blue',
+  support:    'b-green',
 }
 
-function StaffDetail({ id }) {
-  const d = STAFF_DETAIL[id]
-  if (!d) return null
+const AV_COLORS = ['av-y', 'av-r', 'av-b', 'av-g', 'av-p']
+function avColor(name = '') {
+  let h = 0; for (const c of name) h += c.charCodeAt(0)
+  return AV_COLORS[h % AV_COLORS.length]
+}
+function initials(name = '') {
+  return (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+}
+
+function StaffDetail({ staff }) {
+  if (!staff) {
+    return (
+      <div className="profile-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, color: 'var(--text-ter)', fontSize: 13 }}>
+        Select a staff member to view details
+      </div>
+    )
+  }
+
+  const joined = staff.created_at
+    ? new Date(staff.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    : '—'
+
+  const ROLE_PERMS = {
+    admin:      [['View orders', 'b-green', 'Allowed'], ['Assign drivers', 'b-green', 'Allowed'], ['Cancel orders', 'b-green', 'Allowed'], ['Manage staff', 'b-green', 'Allowed'], ['View analytics', 'b-green', 'Allowed']],
+    manager:    [['View orders', 'b-green', 'Allowed'], ['Assign drivers', 'b-green', 'Allowed'], ['Cancel orders', 'b-green', 'Allowed'], ['Manage staff', 'b-amber', 'Limited'], ['View analytics', 'b-green', 'Allowed']],
+    dispatcher: [['View orders', 'b-green', 'Allowed'], ['Assign drivers', 'b-green', 'Allowed'], ['Cancel orders', 'b-amber', 'Limited'], ['Manage staff', 'b-red', 'Denied'], ['View analytics', 'b-amber', 'Limited']],
+    support:    [['View orders', 'b-green', 'Allowed'], ['Assign drivers', 'b-red', 'Denied'], ['Cancel orders', 'b-red', 'Denied'], ['Manage staff', 'b-red', 'Denied'], ['View analytics', 'b-amber', 'Limited']],
+  }
+  const perms = ROLE_PERMS[staff.role] || ROLE_PERMS.dispatcher
+
   return (
     <div className="profile-card">
       <div className="profile-top">
-        <div className={`av-lg ${d.cls}`}>{d.init}</div>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:16,fontWeight:800,color:'var(--text-pri)',marginBottom:4}}>{d.name}</div>
-          <div style={{marginBottom:6,display:'flex',gap:6,flexWrap:'wrap'}}>
-            <span className={`badge ${d.roleBadge}`}>{d.role}</span>
-            <span className={`badge ${d.statusBadge}`}>{d.status}</span>
+        <div className={`av-lg ${avColor(staff.full_name)}`}>{initials(staff.full_name)}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-pri)', marginBottom: 4 }}>{staff.full_name}</div>
+          <div style={{ marginBottom: 6 }}>
+            <span className={`badge ${ROLE_BADGE[staff.role] || 'b-gray'}`} style={{ textTransform: 'capitalize' }}>
+              {staff.role}
+            </span>
           </div>
-          <div style={{fontSize:12,color:'var(--text-ter)'}}>{d.contact}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-ter)' }}>{staff.email}</div>
         </div>
       </div>
-      <div className="profile-stats" style={{ gap: '12px', margin: '20px 0' }}>
-        <div className="pstat" style={{ padding: '14px' }}><div className="pstat-val">{d.orders}</div><div className="pstat-lbl">Orders handled</div></div>
-        <div className="pstat" style={{ padding: '14px' }}><div className="pstat-val">{d.rating}</div><div className="pstat-lbl">Avg rating</div></div>
-        <div className="pstat" style={{background:'rgba(245,184,0,.1)', padding: '14px'}}>
-          <div className="pstat-val m-yellow">{d.perf}</div>
-          <div className="pstat-lbl" style={{color:'#7A5C00'}}>Performance</div>
+
+      <div style={{ marginTop: 20, marginBottom: 16 }}>
+        <div className="section-label">Account details</div>
+        <div style={{ background: 'var(--surface)', borderRadius: 8, padding: '10px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--text-ter)', marginBottom: 3 }}>ROLE</div>
+            <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'capitalize' }}>{staff.role}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--text-ter)', marginBottom: 3 }}>JOINED</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{joined}</div>
+          </div>
         </div>
       </div>
-      <div className="section-label">Current shift</div>
-      <div style={{background:'var(--surface)',borderRadius:8,padding:'10px 12px',marginBottom:16,display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-        <div><div style={{fontSize:10,color:'var(--text-ter)',marginBottom:3}}>CLOCK IN</div><div style={{fontSize:13,fontWeight:700}}>{d.clockIn}</div></div>
-        <div><div style={{fontSize:10,color:'var(--text-ter)',marginBottom:3}}>CLOCK OUT</div><div style={{fontSize:13,fontWeight:700}}>{d.clockOut}</div></div>
-        <div><div style={{fontSize:10,color:'var(--text-ter)',marginBottom:3}}>HOURS</div><div style={{fontSize:13,fontWeight:700,color:'var(--yellow)'}}>{d.hours}</div></div>
-      </div>
-      <div className="section-label">Permissions</div>
-      <div style={{display:'flex',flexDirection:'column',gap:6}}>
-        {d.perms.map(([label, badge, text], i) => (
-          <div key={label} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 0',borderBottom: i < d.perms.length - 1 ? '1px solid var(--border)' : 'none'}}>
-            <span style={{fontSize:13,color:'var(--text-sec)'}}>{label}</span>
+
+      <div className="section-label">Access permissions</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {perms.map(([label, badge, text], i) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: i < perms.length - 1 ? '1px solid var(--border)' : 'none' }}>
+            <span style={{ fontSize: 13, color: 'var(--text-sec)' }}>{label}</span>
             <span className={`badge ${badge}`}>{text}</span>
           </div>
         ))}
@@ -64,145 +81,171 @@ function StaffDetail({ id }) {
   )
 }
 
-const SCHEDULE = [
-  { init:'NJ', cls:'av-y', name:'Nour Jamil',      role:'Dispatcher', roleBadge:'b-blue',   clockIn:'8:00 AM',  clockOut:'4:00 PM',  hours:'6h 14m', status:'Active',   badge:'b-green' },
-  { init:'RK', cls:'av-g', name:'Rami Karam',       role:'Dispatcher', roleBadge:'b-blue',   clockIn:'9:00 AM',  clockOut:'5:00 PM',  hours:'5h 14m', status:'Active',   badge:'b-green' },
-  { init:'ZA', cls:'av-p', name:'Ziad Abi Khalil',  role:'Supervisor', roleBadge:'b-yellow', clockIn:'7:00 AM',  clockOut:'3:00 PM',  hours:'7h 14m', status:'Active',   badge:'b-green' },
-  { init:'HM', cls:'av-b', name:'Hiba Mrad',        role:'Support',    roleBadge:'b-green',  clockIn:'10:00 AM', clockOut:'6:00 PM',  hours:'4h 14m', status:'On break', badge:'b-amber' },
-  { init:'PG', cls:'av-r', name:'Pierre Gemayel',   role:'Dispatcher', roleBadge:'b-blue',   clockIn:'2:00 PM',  clockOut:'10:00 PM', hours:'—',      status:'Upcoming', badge:'b-gray'  },
-  { init:'—',  cls:'av-x', name:'Unassigned',       role:'Dispatcher', roleBadge:'b-blue',   clockIn:'6:00 PM',  clockOut:'12:00 AM', hours:'—',      status:'No cover', badge:'b-red'  },
-]
-
-const PERF = [
-  { name:'Nour Jamil',      pct:94, color:'#5DCAA5' },
-  { name:'Ziad Abi Khalil', pct:91, color:'#5DCAA5' },
-  { name:'Rami Karam',      pct:88, color:undefined },
-  { name:'Hiba Mrad',       pct:82, color:undefined, bg:'rgba(245,184,0,.4)' },
-  { name:'Pierre Gemayel',  pct:74, color:'#F09595', bg:'rgba(240,149,149,.5)' },
-]
-
-const ACTIVITY = [
-  { cls:'av-sm av-y', init:'NJ', name:'Nour assigned driver to #1291', sub:'Karim Mansour → Ahmad Khalil · 2:13 PM' },
-  { cls:'av-sm av-g', init:'RK', name:'Rami cancelled order #1286',    sub:'Customer request · 1:09 PM' },
-  { cls:'av-sm av-p', init:'ZA', name:'Ziad updated promo WKND20',     sub:'Extended expiry by 7 days · 11:45 AM' },
-  { cls:'av-sm av-b', init:'HM', name:'Hiba replied to Sara Rizk',     sub:'WhatsApp escalation resolved · 10:22 AM' },
-  { cls:'av-sm av-y', init:'NJ', name:'Nour clocked in',               sub:'8:00 AM · on time' },
-]
-
-const COL = '1fr 90px 100px 100px 80px 80px'
-
 export default function Staff() {
-  const [selected, setSelected] = useState('nour')
-  const [search, setSearch]     = useState('')
+  const [staff, setStaff]           = useState([])
+  const [selected, setSelected]     = useState(null)
+  const [loading, setLoading]       = useState(true)
+  const [search, setSearch]         = useState('')
   const [roleFilter, setRoleFilter] = useState('All roles')
+  const [removing, setRemoving]     = useState(null)
 
-  const filteredList = STAFF_LIST.filter(s => {
+  useEffect(() => {
+    fetchStaff()
+
+    const channel = supabase
+      .channel('crm-staff-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'staff' }, fetchStaff)
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [])
+
+  async function fetchStaff() {
+    const { data, error } = await supabase
+      .from('staff')
+      .select('id, full_name, role, email, created_at')
+      .order('created_at', { ascending: false })
+    if (!error && data) {
+      setStaff(data)
+      // Auto-select first staff member if nothing selected yet
+      setSelected(prev => prev ?? (data.length > 0 ? data[0] : null))
+    }
+    setLoading(false)
+  }
+
+  async function removeStaff(member, e) {
+    e.stopPropagation()
+    if (!window.confirm(`Remove ${member.full_name} from the team?`)) return
+    setRemoving(member.id)
+    const { error } = await supabase.from('staff').delete().eq('id', member.id)
+    if (!error) {
+      toast.success('Staff member removed')
+      setStaff(prev => {
+        const next = prev.filter(s => s.id !== member.id)
+        if (selected?.id === member.id) setSelected(next[0] || null)
+        return next
+      })
+    } else {
+      toast.error(error.message)
+    }
+    setRemoving(null)
+  }
+
+  const filtered = staff.filter(s => {
     const q = search.toLowerCase()
-    const matchSearch = !q || s.name.toLowerCase().includes(q) || s.role.toLowerCase().includes(q)
+    const matchSearch = !q || s.full_name?.toLowerCase().includes(q) || s.email?.toLowerCase().includes(q) || s.role?.toLowerCase().includes(q)
     const matchRole   = roleFilter === 'All roles' || s.role === roleFilter
     return matchSearch && matchRole
   })
 
+  const selectedStaff = staff.find(s => s.id === selected?.id) || null
+
   return (
     <div>
-      <div className="metrics">
-        <div className="metric"><div className="m-label">Total staff</div><div className="m-val">11</div><div className="m-sub">across all roles</div></div>
-        <div className="metric"><div className="m-label">On shift now</div><div className="m-val m-up">6</div><div className="m-sub">of 8 scheduled</div></div>
-        <div className="metric"><div className="m-label">Open shifts</div><div className="m-val m-dn">2</div><div className="m-sub m-dn">need coverage</div></div>
-        <div className="metric"><div className="m-label">Avg performance</div><div className="m-val m-yellow">87%</div><div className="m-sub m-up">+4% vs last month</div></div>
+      {/* ── Metrics ── */}
+      <div className="metrics" style={{ marginBottom: 18 }}>
+        <div className="metric">
+          <div className="m-label">Total staff</div>
+          <div className="m-val">{staff.length}</div>
+          <div className="m-sub">registered members</div>
+        </div>
+        <div className="metric">
+          <div className="m-label">Dispatchers</div>
+          <div className="m-val m-up">{staff.filter(s => s.role === 'dispatcher').length}</div>
+          <div className="m-sub">active role</div>
+        </div>
+        <div className="metric">
+          <div className="m-label">Admins / Managers</div>
+          <div className="m-val m-yellow">{staff.filter(s => s.role === 'admin' || s.role === 'manager').length}</div>
+          <div className="m-sub">elevated access</div>
+        </div>
+        <div className="metric">
+          <div className="m-label">Support</div>
+          <div className="m-val">{staff.filter(s => s.role === 'support').length}</div>
+          <div className="m-sub">customer support</div>
+        </div>
       </div>
 
-      <div className="grid-2" style={{marginBottom:14}}>
+      <div className="grid-2">
+        {/* ── Staff list ── */}
         <div className="card">
           <div className="card-head">
-            <span className="card-title">Staff members</span>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <select
-                value={roleFilter}
-                onChange={e => setRoleFilter(e.target.value)}
-                style={{fontSize:11,padding:'3px 8px',background:'var(--dark4)',border:'1px solid var(--border)',borderRadius:6,color:'var(--text-sec)',fontFamily:'var(--font)',outline:'none'}}
-              >
-                <option>All roles</option>
-                <option>Dispatcher</option>
-                <option>Supervisor</option>
-                <option>Support</option>
-              </select>
-            </div>
+            <span className="card-title">Team members</span>
+            <select
+              value={roleFilter}
+              onChange={e => setRoleFilter(e.target.value)}
+              style={{ fontSize: 11, padding: '3px 8px', background: 'var(--dark4)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-sec)', fontFamily: 'var(--font)', outline: 'none' }}
+            >
+              <option>All roles</option>
+              <option value="dispatcher">Dispatcher</option>
+              <option value="admin">Admin</option>
+              <option value="manager">Manager</option>
+              <option value="support">Support</option>
+            </select>
           </div>
-          <div style={{padding:'8px 12px',borderBottom:'1px solid var(--border)'}}>
+
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
             <input
-              placeholder="Search staff..."
+              placeholder="Search by name, email or role…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{width:'100%',padding:'6px 10px',fontSize:12,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:7,color:'var(--text-pri)',fontFamily:'var(--font)',outline:'none'}}
+              style={{ width: '100%', padding: '6px 10px', fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7, color: 'var(--text-pri)', fontFamily: 'var(--font)', outline: 'none' }}
             />
           </div>
-          <div className="table-head" style={{gridTemplateColumns:'1fr 90px 80px'}}>Member<span>Role</span><span>Status</span></div>
-          {filteredList.length === 0 ? (
-            <div style={{padding:'16px',textAlign:'center',fontSize:12,color:'var(--text-ter)'}}>No staff match your search.</div>
-          ) : filteredList.map(s => (
+
+          {loading ? (
+            <div style={{ padding: '24px', textAlign: 'center', fontSize: 12, color: 'var(--text-ter)' }}>Loading…</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: '32px 20px', textAlign: 'center', fontSize: 13, color: 'var(--text-ter)' }}>
+              {staff.length === 0
+                ? <><div style={{ fontSize: 28, marginBottom: 8 }}>👥</div>No staff yet — click <strong style={{ color: 'var(--yellow)' }}>+ Add staff</strong> to add team members.</>
+                : 'No staff match your search.'}
+            </div>
+          ) : filtered.map(s => (
             <div
               key={s.id}
               className="table-row"
               style={{
-                gridTemplateColumns:'1fr 90px 80px',
+                gridTemplateColumns: '1fr 90px 70px',
                 padding: '16px 20px',
-                background: selected === s.id ? 'rgba(245,184,0,.08)' : undefined,
-                borderLeft: selected === s.id ? '3px solid var(--yellow)' : '3px solid transparent',
+                background: selectedStaff?.id === s.id ? 'rgba(245,184,0,.08)' : undefined,
+                borderLeft: selectedStaff?.id === s.id ? '3px solid var(--yellow)' : '3px solid transparent',
+                cursor: 'pointer',
               }}
-              onClick={() => setSelected(s.id)}
+              onClick={() => setSelected(s)}
             >
-              <div style={{display:'flex',alignItems:'center',gap:12}}>
-                <div className={`av ${s.cls}`} style={{width:32,height:32,fontSize:11}}>{s.init}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div className={`av ${avColor(s.full_name)}`} style={{ width: 32, height: 32, fontSize: 11 }}>{initials(s.full_name)}</div>
                 <div>
-                  <div style={{fontSize:14,fontWeight:600,color:'var(--text-pri)'}}>{s.name}</div>
-                  <div style={{fontSize:12,color:'var(--text-ter)'}}>{s.phone}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-pri)' }}>{s.full_name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-ter)' }}>{s.email}</div>
                 </div>
               </div>
-              <span className={`badge ${s.roleBadge}`} style={{padding:'4px 10px',fontSize:'10px'}}>{s.role}</span>
-              <span className={`badge ${s.statusBadge}`} style={{padding:'4px 10px',fontSize:'10px'}}>{s.status}</span>
+              <span className={`badge ${ROLE_BADGE[s.role] || 'b-gray'}`} style={{ padding: '4px 10px', fontSize: '10px', textTransform: 'capitalize' }}>
+                {s.role}
+              </span>
+              <button
+                disabled={removing === s.id}
+                onClick={e => removeStaff(s, e)}
+                style={{
+                  background: 'none',
+                  border: '1px solid rgba(240,149,149,.3)',
+                  borderRadius: 6,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  color: '#F09595',
+                  cursor: removing === s.id ? 'not-allowed' : 'pointer',
+                  opacity: removing === s.id ? 0.5 : 1,
+                  fontFamily: 'var(--font)',
+                }}
+              >
+                {removing === s.id ? '…' : 'Remove'}
+              </button>
             </div>
           ))}
         </div>
-        <StaffDetail id={selected} />
-      </div>
 
-      <div className="card" style={{marginBottom:14}}>
-        <div className="card-head"><span className="card-title">Today's shift schedule</span><span className="card-meta">Sun 12 Apr</span></div>
-        <div className="table-head" style={{gridTemplateColumns:COL}}>Staff member<span>Role</span><span>Clock in</span><span>Clock out</span><span>Hours</span><span>Status</span></div>
-        {SCHEDULE.map(s => (
-          <div key={s.name} className="table-row" style={{gridTemplateColumns:COL}}>
-            <div style={{display:'flex',alignItems:'center',gap:8}}><div className={`av av-sm ${s.cls}`}>{s.init}</div><span style={{fontSize:13,fontWeight:600}}>{s.name}</span></div>
-            <span className={`badge ${s.roleBadge}`}>{s.role}</span>
-            <span style={{fontSize:12,color:'var(--text-sec)'}}>{s.clockIn}</span>
-            <span style={{fontSize:12,color:'var(--text-sec)'}}>{s.clockOut}</span>
-            <span style={{fontSize:13,fontWeight:700,color: s.hours==='—' ? 'var(--text-ter)' : 'var(--yellow)'}}>{s.hours}</span>
-            <span className={`badge ${s.badge}`}>{s.status}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid-2">
-        <div className="card">
-          <div className="card-head"><span className="card-title">Performance this month</span></div>
-          <div style={{padding:'14px 16px'}}>
-            {PERF.map(p => (
-              <div className="zone-row" key={p.name}>
-                <div className="zone-top"><span>{p.name}</span><span className="zone-val" style={{color:p.color}}>{p.pct}%</span></div>
-                <div className="prog-bar"><div className="prog-fill" style={{width:`${p.pct}%`, background:p.bg}}></div></div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="card">
-          <div className="card-head"><span className="card-title">Recent activity log</span><span className="card-meta">Today</span></div>
-          {ACTIVITY.map(a => (
-            <div key={a.sub} className="row">
-              <div className={`av ${a.cls}`}>{a.init}</div>
-              <div className="row-info"><div className="row-name">{a.name}</div><div className="row-sub">{a.sub}</div></div>
-            </div>
-          ))}
-        </div>
+        {/* ── Detail panel ── */}
+        <StaffDetail staff={selectedStaff} />
       </div>
     </div>
   )

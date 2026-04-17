@@ -38,8 +38,8 @@ export default function Chats() {
     async function loadConvs() {
       const { data } = await supabase
         .from('conversations')
-        .select('id, customer_id, customer_phone, last_message, updated_at, customers(full_name)')
-        .order('updated_at', { ascending: false })
+        .select('id, customer_id, last_message, last_message_at, customers(full_name, phone)')
+        .order('last_message_at', { ascending: false })
       if (data) {
         setConvs(data)
         if (data.length > 0 && !active) setActive(data[0])
@@ -64,9 +64,9 @@ export default function Chats() {
 
     supabase
       .from('messages')
-      .select('id, direction, body, created_at')
+      .select('id, direction, body, sent_at')
       .eq('conversation_id', active.id)
-      .order('created_at', { ascending: true })
+      .order('sent_at', { ascending: true })
       .then(({ data }) => { if (data) setMessages(data) })
 
     // Unsubscribe from previous channel
@@ -109,16 +109,23 @@ export default function Chats() {
     setSending(true)
     setReply('')
 
-    const now = new Date().toISOString()
+    const now  = new Date().toISOString()
+    const tmpId = `tmp-${Date.now()}`
 
-    // Optimistically add to UI
-    const optimistic = { id: `tmp-${Date.now()}`, direction: 'outbound', body: text, created_at: now }
-    setMessages(prev => [...prev, optimistic])
+    // Optimistically add to UI immediately
+    setMessages(prev => [...prev, { id: tmpId, direction: 'outbound', body: text, created_at: now }])
 
-    await Promise.all([
-      supabase.from('messages').insert({ conversation_id: active.id, direction: 'outbound', body: text, created_at: now }),
-      supabase.from('conversations').update({ last_message: text, updated_at: now }).eq('id', active.id),
+    // Insert and get the real row back so we can replace the tmp record.
+    // The realtime INSERT handler deduplicates by id — once we replace tmp with
+    // the real id, the realtime event will find it already present and skip it.
+    const [{ data: inserted }] = await Promise.all([
+      supabase.from('messages').insert({ conversation_id: active.id, direction: 'outbound', body: text, sent_at: now }).select().single(),
+      supabase.from('conversations').update({ last_message: text, last_message_at: now }).eq('id', active.id),
     ])
+
+    if (inserted) {
+      setMessages(prev => prev.map(m => m.id === tmpId ? inserted : m))
+    }
     setSending(false)
   }
 
@@ -138,10 +145,10 @@ export default function Chats() {
   })
 
   const head = active ? {
-    name:  active.customers?.full_name || active.customer_phone,
-    phone: active.customer_phone,
+    name:  active.customers?.full_name || active.customers?.phone || 'Unknown',
+    phone: active.customers?.phone || 'No phone',
     cls:   avColor(active.customers?.full_name || ''),
-    init:  initials(active.customers?.full_name || active.customer_phone || ''),
+    init:  initials(active.customers?.full_name || active.customers?.phone || ''),
   } : null
 
   return (
@@ -163,7 +170,7 @@ export default function Chats() {
         ) : filteredConvs.length === 0 ? (
           <div style={{ padding: '14px', textAlign: 'center', fontSize: 12, color: 'var(--text-ter)' }}>No conversations found.</div>
         ) : filteredConvs.map(c => {
-          const name = c.customers?.full_name || c.customer_phone
+          const name = c.customers?.full_name || c.customers?.phone || 'Unknown'
           const isActive = active?.id === c.id
           return (
             <div
@@ -183,7 +190,7 @@ export default function Chats() {
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--yellow)', display: 'inline-block', flexShrink: 0 }} />
                   )}
                 </div>
-                <span className="chat-time">{fmtRelative(c.updated_at)}</span>
+                <span className="chat-time">{fmtRelative(c.last_message_at)}</span>
               </div>
               <div className="chat-prev">{c.last_message}</div>
             </div>
@@ -220,7 +227,7 @@ export default function Chats() {
                   {m.body}
                 </div>
                 <div className="msg-time" style={{ marginTop: '6px', fontSize: '11px' }}>
-                  {fmtTime(m.created_at)}{m.direction === 'outbound' ? ' · Dispatcher' : ''}
+                  {fmtTime(m.sent_at)}{m.direction === 'outbound' ? ' · Dispatcher' : ''}
                 </div>
               </div>
             ))}

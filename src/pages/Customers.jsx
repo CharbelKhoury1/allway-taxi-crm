@@ -17,7 +17,7 @@ const TIER_STYLE = {
   bronze:   { color: '#C0945A', bg: 'rgba(192,148,90,.15)'  },
 }
 
-function CustomerDetail({ customer }) {
+function CustomerDetail({ customer, tripCounts }) {
   const [trips, setTrips]     = useState([])
   const [loyalty, setLoyalty] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -25,20 +25,22 @@ function CustomerDetail({ customer }) {
   useEffect(() => {
     if (!customer) return
     setLoading(true)
+    setTrips([])
+    setLoyalty(null)
     Promise.all([
       supabase
         .from('trips')
         .select('id, pickup_address, dropoff_address, status, fare_usd, requested_at, drivers(full_name)')
         .eq('customer_id', customer.id)
         .order('requested_at', { ascending: false })
-        .limit(5),
+        .limit(8),
       supabase
         .from('loyalty_accounts')
-        .select('points, tier, lifetime_points')
+        .select('points_balance, tier, total_points_earned')
         .eq('customer_id', customer.id)
         .maybeSingle(),
     ]).then(([tripRes, loyaltyRes]) => {
-      if (tripRes.data)   setTrips(tripRes.data)
+      if (tripRes.data)    setTrips(tripRes.data)
       if (loyaltyRes.data) setLoyalty(loyaltyRes.data)
       setLoading(false)
     })
@@ -52,11 +54,15 @@ function CustomerDetail({ customer }) {
     )
   }
 
-  const spend     = trips.filter(t => t.status === 'completed').reduce((s, t) => s + Number(t.fare_usd || 0), 0)
-  const completed = trips.filter(t => t.status === 'completed').length
+  const completed = trips.filter(t => t.status === 'completed')
+  const spend     = completed.reduce((s, t) => s + Number(t.fare_usd || 0), 0)
   const tier      = loyalty?.tier
   const tierStyle = TIER_STYLE[tier] || {}
-  const joinDate  = customer.created_at ? new Date(customer.created_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '—'
+  const joinDate  = customer.created_at
+    ? new Date(customer.created_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+    : '—'
+
+  const STATUS_COLOR = { completed: '#5DCAA5', cancelled: '#F09595', on_trip: '#F5B800', pending: '#F5B800', dispatching: '#F5B800', accepted: '#85B7EB' }
 
   return (
     <div className="profile-card">
@@ -80,30 +86,38 @@ function CustomerDetail({ customer }) {
 
       <div className="profile-stats" style={{ gap: '12px', margin: '20px 0' }}>
         <div className="pstat" style={{ padding: '14px' }}>
-          <div className="pstat-val">{completed}</div>
-          <div className="pstat-lbl">Trips</div>
+          <div className="pstat-val">{tripCounts[customer.id] || 0}</div>
+          <div className="pstat-lbl">Total trips</div>
         </div>
         <div className="pstat" style={{ padding: '14px' }}>
           <div className="pstat-val">${spend.toFixed(0)}</div>
-          <div className="pstat-lbl">Spend</div>
+          <div className="pstat-lbl">Total spend</div>
         </div>
         <div className="pstat" style={{ background: 'rgba(245,184,0,.1)', padding: '14px' }}>
-          <div className="pstat-val m-yellow">{loyalty?.points?.toLocaleString() || '—'}</div>
+          <div className="pstat-val m-yellow">{loyalty?.points_balance?.toLocaleString() ?? '—'}</div>
           <div className="pstat-lbl" style={{ color: 'var(--yellow-dark)' }}>Points</div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-        {customer.address && (
-          <div style={{ fontSize: 12, color: 'var(--text-sec)', flex: 1 }}>
-            <span style={{ fontSize: 10, color: 'var(--text-ter)', fontWeight: 700, marginRight: 6 }}>AREA</span>
-            {customer.address}
-          </div>
-        )}
-        <div style={{ fontSize: 12, color: 'var(--text-sec)' }}>
-          <span style={{ fontSize: 10, color: 'var(--text-ter)', fontWeight: 700, marginRight: 6 }}>JOINED</span>
-          {joinDate}
+      {(customer.address || customer.notes) && (
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          {customer.address && (
+            <div style={{ fontSize: 12, color: 'var(--text-sec)', flex: 1 }}>
+              <span style={{ fontSize: 10, color: 'var(--text-ter)', fontWeight: 700, marginRight: 6 }}>AREA</span>
+              {customer.address}
+            </div>
+          )}
+          {customer.notes && (
+            <div style={{ fontSize: 12, color: 'var(--text-sec)', flex: 1 }}>
+              <span style={{ fontSize: 10, color: 'var(--text-ter)', fontWeight: 700, marginRight: 6 }}>NOTE</span>
+              {customer.notes}
+            </div>
+          )}
         </div>
+      )}
+
+      <div style={{ fontSize: 11, color: 'var(--text-ter)', marginBottom: 14 }}>
+        <span style={{ fontWeight: 700, marginRight: 6 }}>JOINED</span>{joinDate}
       </div>
 
       <div className="section-label">Recent trips</div>
@@ -115,14 +129,14 @@ function CustomerDetail({ customer }) {
         <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < trips.length - 1 ? '1px solid var(--border)' : 'none' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-pri)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {t.pickup_address} → {t.dropoff_address}
+              {(t.pickup_address || '—').split(',')[0]} → {(t.dropoff_address || '—').split(',')[0]}
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-ter)', marginTop: 1 }}>
-              {t.drivers?.full_name || '—'} · {new Date(t.requested_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+              {t.drivers?.full_name || 'No driver'} · {new Date(t.requested_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
             </div>
           </div>
-          <span style={{ fontSize: 12, fontWeight: 700, marginLeft: 10, flexShrink: 0, color: t.status === 'completed' ? '#5DCAA5' : t.status === 'cancelled' ? '#F09595' : '#F5B800' }}>
-            {t.status === 'completed' ? `$${t.fare_usd}` : t.status}
+          <span style={{ fontSize: 12, fontWeight: 700, marginLeft: 10, flexShrink: 0, color: STATUS_COLOR[t.status] || 'var(--text-ter)' }}>
+            {t.status === 'completed' ? `$${Number(t.fare_usd || 0).toFixed(0)}` : t.status.replace('_', ' ')}
           </span>
         </div>
       ))}
@@ -131,18 +145,31 @@ function CustomerDetail({ customer }) {
 }
 
 export default function Customers() {
-  const [customers, setCustomers] = useState([])
+  const [customers, setCustomers]   = useState([])
   const [tripCounts, setTripCounts] = useState({})
+  const [tiers, setTiers]           = useState({})
   const [loading, setLoading]       = useState(true)
   const [selected, setSelected]     = useState(null)
   const [search, setSearch]         = useState('')
+  const [tierFilter, setTierFilter] = useState('All')
+  const [sortBy, setSortBy]         = useState('Newest')
 
   useEffect(() => {
     async function load() {
-      const [custsRes, tripsRes] = await Promise.all([
-        supabase.from('customers').select('id, full_name, phone, email, address, created_at').order('created_at', { ascending: false }),
-        supabase.from('trips').select('customer_id').eq('status', 'completed'),
+      const [custsRes, tripsRes, loyaltyRes] = await Promise.all([
+        supabase
+          .from('customers')
+          .select('id, full_name, phone, email, address, notes, created_at')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('trips')
+          .select('customer_id')
+          .neq('status', 'cancelled'),
+        supabase
+          .from('loyalty_accounts')
+          .select('customer_id, tier, points_balance'),
       ])
+
       if (custsRes.data) {
         setCustomers(custsRes.data)
         if (custsRes.data.length > 0) setSelected(custsRes.data[0])
@@ -152,61 +179,112 @@ export default function Customers() {
         tripsRes.data.forEach(t => { counts[t.customer_id] = (counts[t.customer_id] || 0) + 1 })
         setTripCounts(counts)
       }
+      if (loyaltyRes.data) {
+        const map = {}
+        loyaltyRes.data.forEach(a => { map[a.customer_id] = { tier: a.tier, points: a.points_balance } })
+        setTiers(map)
+      }
       setLoading(false)
     }
     load()
   }, [])
 
-  const filtered = customers.filter(c => {
+  let filtered = customers.filter(c => {
     const q = search.toLowerCase()
-    return !q || c.full_name.toLowerCase().includes(q) || c.phone.includes(q)
+    const matchQ = !q || (c.full_name || '').toLowerCase().includes(q) || (c.phone || '').includes(q) || (c.email || '').toLowerCase().includes(q)
+    const matchTier = tierFilter === 'All' || (tiers[c.id]?.tier || 'none') === tierFilter.toLowerCase()
+    return matchQ && matchTier
   })
+
+  if (sortBy === 'Most trips') {
+    filtered = [...filtered].sort((a, b) => (tripCounts[b.id] || 0) - (tripCounts[a.id] || 0))
+  } else if (sortBy === 'Most points') {
+    filtered = [...filtered].sort((a, b) => (tiers[b.id]?.points || 0) - (tiers[a.id]?.points || 0))
+  }
 
   return (
     <div>
-      <div className="search-row">
+      <div className="metrics" style={{ marginBottom: 18 }}>
+        <div className="metric"><div className="m-label">Total customers</div><div className="m-val">{customers.length}</div></div>
+        <div className="metric"><div className="m-label">With loyalty</div><div className="m-val m-yellow">{Object.keys(tiers).length}</div></div>
+        <div className="metric"><div className="m-label">Gold+ members</div><div className="m-val m-up">{Object.values(tiers).filter(t => t.tier === 'gold' || t.tier === 'platinum').length}</div></div>
+        <div className="metric"><div className="m-label">Active today</div><div className="m-val">{Object.values(tripCounts).filter(n => n > 0).length}</div></div>
+      </div>
+
+      <div className="search-row" style={{ marginBottom: 16 }}>
         <input
-          placeholder="Search by name or phone..."
+          placeholder="Search by name, phone or email…"
           style={{ flex: 1 }}
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+        <select value={tierFilter} onChange={e => setTierFilter(e.target.value)}>
+          <option>All</option>
+          <option>Platinum</option>
+          <option>Gold</option>
+          <option>Silver</option>
+          <option>Bronze</option>
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)}>
+          <option>Newest</option>
+          <option>Most trips</option>
+          <option>Most points</option>
+        </select>
       </div>
 
       <div className="grid-2 grid-2-3">
         <div className="table-wrap">
-          <div className="table-head" style={{ gridTemplateColumns: '1fr 55px' }}>
-            Customer<span>Trips</span>
+          <div className="table-head" style={{ gridTemplateColumns: '1fr 55px 65px' }}>
+            Customer<span>Trips</span><span>Tier</span>
           </div>
           {loading ? (
             <div style={{ padding: '20px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-ter)' }}>Loading…</div>
-          ) : filtered.length === 0 ? (
-            <div style={{ padding: '20px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-ter)' }}>No customers match your search.</div>
-          ) : filtered.map(c => (
-            <div
-              className="table-row"
-              key={c.id}
-              style={{
-                gridTemplateColumns: '1fr 55px',
-                padding: '16px 20px',
-                background: selected?.id === c.id ? 'rgba(245,184,0,.08)' : undefined,
-                borderLeft: selected?.id === c.id ? '3px solid var(--yellow)' : '3px solid transparent',
-              }}
-              onClick={() => setSelected(c)}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div className={`av ${avColor(c.full_name)}`} style={{ width: 32, height: 32, fontSize: 11 }}>{initials(c.full_name)}</div>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-pri)' }}>{c.full_name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-ter)' }}>{c.phone}</div>
-                </div>
-              </div>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>{tripCounts[c.id] || 0}</span>
+          ) : customers.length === 0 ? (
+            <div style={{ padding: '32px 20px', textAlign: 'center', fontSize: 13, color: 'var(--text-ter)' }}>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>👤</div>
+              No customers yet — click <strong style={{ color: 'var(--yellow)' }}>+ Add customer</strong> to get started.
             </div>
-          ))}
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: '20px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-ter)' }}>
+              No customers match your filters.
+              <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: 'var(--yellow)', cursor: 'pointer' }} onClick={() => { setSearch(''); setTierFilter('All') }}>Clear filters</span>
+            </div>
+          ) : filtered.map(c => {
+            const tierInfo = tiers[c.id]
+            const tierStyle = TIER_STYLE[tierInfo?.tier] || null
+            return (
+              <div
+                className="table-row"
+                key={c.id}
+                style={{
+                  gridTemplateColumns: '1fr 55px 65px',
+                  padding: '16px 20px',
+                  background: selected?.id === c.id ? 'rgba(245,184,0,.08)' : undefined,
+                  borderLeft: selected?.id === c.id ? '3px solid var(--yellow)' : '3px solid transparent',
+                }}
+                onClick={() => setSelected(c)}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div className={`av ${avColor(c.full_name)}`} style={{ width: 32, height: 32, fontSize: 11 }}>{initials(c.full_name)}</div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-pri)' }}>{c.full_name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-ter)' }}>{c.phone}</div>
+                  </div>
+                </div>
+                <span style={{ fontSize: 15, fontWeight: 700 }}>{tripCounts[c.id] || 0}</span>
+                {tierStyle ? (
+                  <span style={{ fontSize: 9, fontWeight: 700, color: tierStyle.color, background: tierStyle.bg, padding: '2px 7px', borderRadius: 10 }}>
+                    {tierInfo.tier.toUpperCase()}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 11, color: 'var(--text-ter)' }}>—</span>
+                )}
+              </div>
+            )
+          })}
         </div>
 
-        <CustomerDetail customer={selected} />
+        <CustomerDetail customer={selected} tripCounts={tripCounts} />
       </div>
     </div>
   )

@@ -63,7 +63,7 @@ const NAV = [
 
 
 const PAGE_TITLES  = { dash:'Dashboard', orders:'Orders', customers:'Customers', drivers:'Drivers', analytics:'Analytics', chats:'WhatsApp chats', staff:'Staff', marketing:'Marketing', loyalty:'Loyalty' }
-const PAGE_ACTIONS = { dash:'Refresh metrics', orders:'+ New order', customers:'+ Add customer', drivers:'+ Add driver', analytics:'Export report', chats:'Mark all read', staff:'+ Add staff', marketing:'+ New campaign', loyalty:'+ Add reward' }
+const PAGE_ACTIONS = { dash:'+ New order', orders:'+ New order', customers:'+ Add customer', drivers:'+ Add driver', analytics:'Export report', chats:'Mark all read', staff:'+ Add staff', marketing:'+ New promo', loyalty:'± Adjust points' }
 
 const PAGES = { dash:Dashboard, orders:Orders, customers:Customers, drivers:Drivers, analytics:Analytics, chats:Chats, staff:Staff, marketing:Marketing, loyalty:Loyalty }
 
@@ -86,6 +86,7 @@ export default function App() {
   // null = loading, false = logged out, object = logged in user
   const [user, setUser]   = useState(null)
   const [authReady, setAuthReady] = useState(false)
+  const [profile, setProfile] = useState(null)
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
   const [page, setPage]   = useState(() => localStorage.getItem('currentPage') || 'dash')
   const [showModal, setShowModal] = useState(false)
@@ -93,7 +94,11 @@ export default function App() {
   const [customers, setCustomers] = useState([])
   const [isNewCust, setIsNewCust] = useState(false)
   const [chatBadge, setChatBadge] = useState(null)
+  const [refreshKey, setRefreshKey] = useState(0)
   const time = useLiveTime()
+
+  // Remount current page component without a full browser reload
+  function refresh() { setRefreshKey(k => k + 1) }
 
   // Live chat badge — count unresolved conversations
   useEffect(() => {
@@ -110,6 +115,17 @@ export default function App() {
       .subscribe()
     return () => supabase.removeChannel(sub)
   }, [])
+
+  // Fetch the logged-in user's staff record to show real name/role in the sidebar
+  useEffect(() => {
+    if (!user?.email) return
+    supabase
+      .from('staff')
+      .select('full_name, role')
+      .eq('email', user.email)
+      .maybeSingle()
+      .then(({ data }) => { if (data) setProfile(data) })
+  }, [user?.email])
 
   // Bootstrap: restore existing session, then listen for auth changes
   useEffect(() => {
@@ -204,7 +220,7 @@ export default function App() {
   async function handleAction() {
     if (page === 'chats') {
       const { error } = await supabase.from('conversations').update({ status: 'resolved' }).in('status', ['active', 'needs_human'])
-      if (!error) { setChatBadge(null); toast.success('All conversations marked as resolved'); setTimeout(() => window.location.reload(), 800) }
+      if (!error) { setChatBadge(null); toast.success('All conversations marked as resolved'); refresh() }
     } else if (page === 'orders') {
       const [drvRes, custRes] = await Promise.all([
         supabase.from('drivers').select('id, full_name, plate').eq('online', true).eq('status', 'available').order('full_name'),
@@ -215,8 +231,14 @@ export default function App() {
       setIsNewCust(false)
       setShowModal(true)
     } else if (page === 'dash') {
-      toast.success('Refreshing live metrics...')
-      setTimeout(() => window.location.reload(), 500)
+      const [drvRes, custRes] = await Promise.all([
+        supabase.from('drivers').select('id, full_name, plate').eq('online', true).eq('status', 'available').order('full_name'),
+        supabase.from('customers').select('id, full_name, phone').order('full_name')
+      ])
+      setAvailableDrivers(drvRes.data || [])
+      setCustomers(custRes.data || [])
+      setIsNewCust(false)
+      setShowModal(true)
     } else if (page === 'analytics') {
       toast.success('Generating Analytics Report...')
       window.dispatchEvent(new CustomEvent('export-analytics'))
@@ -270,7 +292,7 @@ export default function App() {
                     if (!error) {
                       toast.success(driverId ? 'Order dispatched!' : 'Order received!');
                       setShowModal(false);
-                      setTimeout(() => window.location.reload(), 800);
+                      refresh();
                     } else { toast.error(error.message); }
                   }}>
                     <div className="f-row">
@@ -339,7 +361,7 @@ export default function App() {
                       address: fd.get('addr'),
                       notes: fd.get('notes')
                     });
-                    if (!error) { toast.success('Customer added to database!'); setShowModal(false); setTimeout(() => window.location.reload(), 1000); }
+                    if (!error) { toast.success('Customer added to database!'); setShowModal(false); refresh(); }
                     else { toast.error(error.message); }
                   }}>
                     <div className="f-row"><label>Full Name</label><input required name="name" placeholder="eg Charbel Khoury" /></div>
@@ -351,20 +373,24 @@ export default function App() {
                   </form>
                 )}
                 {page === 'drivers' && (
-                  <form onSubmit={async e => { 
-                    e.preventDefault(); 
+                  <form onSubmit={async e => {
+                    e.preventDefault();
                     const fd = new FormData(e.target);
-                    const { error } = await supabase.from('drivers').insert({ 
-                      full_name: fd.get('name'), 
-                      car_model: fd.get('car'), 
-                      plate: fd.get('plate'),
-                      online: false,
-                      status: 'offline'
+                    const { error } = await supabase.from('drivers').insert({
+                      full_name: fd.get('name'),
+                      phone:     fd.get('phone'),
+                      car_model: fd.get('car'),
+                      plate:     fd.get('plate'),
+                      online:    false,
+                      status:    'offline',
+                      rating:    5.0,
+                      total_trips: 0,
                     });
-                    if (!error) { toast.success('Driver registered successfully!'); setShowModal(false); setTimeout(() => window.location.reload(), 1000); }
+                    if (!error) { toast.success('Driver registered successfully!'); setShowModal(false); refresh(); }
                     else { toast.error(error.message); }
                   }}>
                     <div className="f-row"><label>Driver Name</label><input required name="name" placeholder="Full name" /></div>
+                    <div className="f-row"><label>Phone Number</label><input required name="phone" placeholder="+961..." /></div>
                     <div className="f-row"><label>Vehicle Model</label><input required name="car" placeholder="eg Toyota Corolla"/></div>
                     <div className="f-row"><label>License Plate</label><input required name="plate" placeholder="B 12345"/></div>
                     <button type="submit" className="btn btn-primary" style={{width:'100%', marginTop:10}}>Register Driver</button>
@@ -379,7 +405,7 @@ export default function App() {
                       role: fd.get('role'), 
                       email: fd.get('email')
                     });
-                    if (!error) { toast.success('Staff member added!'); setShowModal(false); setTimeout(() => window.location.reload(), 1000); }
+                    if (!error) { toast.success('Staff member added!'); setShowModal(false); refresh(); }
                     else { toast.error(error.message); }
                   }}>
                     <div className="f-row"><label>Full Name</label><input required name="name" placeholder="eg Elias Mansour" /></div>
@@ -405,9 +431,10 @@ export default function App() {
                       discount_type:  fd.get('discount_type'),
                       discount_value: parseFloat(fd.get('discount_value')),
                       status:         'active',
+                      max_uses:       1000,
                       expires_at:     expiry || null,
                     });
-                    if (!error) { toast.success('Promo code created!'); setShowModal(false); setTimeout(() => window.location.reload(), 1000); }
+                    if (!error) { toast.success('Promo code created!'); setShowModal(false); refresh(); }
                     else { toast.error(error.message); }
                   }}>
                     <div className="f-row"><label>Promo Code</label><input required name="code" placeholder="eg SUMMER24" style={{textTransform:'uppercase'}} /></div>
@@ -440,7 +467,7 @@ export default function App() {
                     if (!la) { toast.error('No loyalty account found for this customer'); return; }
                     const newBal = Math.max(0, (la.points_balance || 0) + pts);
                     const { error } = await supabase.from('loyalty_accounts').update({ points_balance: newBal }).eq('id', la.id);
-                    if (!error) { toast.success(`Balance updated → ${newBal} pts`); setShowModal(false); setTimeout(() => window.location.reload(), 800); }
+                    if (!error) { toast.success(`Balance updated → ${newBal} pts`); setShowModal(false); refresh(); }
                     else { toast.error(error.message); }
                   }}>
                     <div className="f-row"><label>Customer Phone</label><input required name="phone" placeholder="+961..." /></div>
@@ -487,10 +514,18 @@ export default function App() {
         ))}
 
         <div className="sb-footer">
-          <div className="sb-av">D</div>
+          <div className="sb-av">
+            {((profile?.full_name || user?.email || 'D')[0]).toUpperCase()}
+          </div>
           <div>
-            <div className="sb-uname">Dispatcher</div>
-            <div className="sb-urole">allwaytaxi.com</div>
+            <div className="sb-uname">
+              {profile?.full_name || user?.email?.split('@')[0] || 'Dispatcher'}
+            </div>
+            <div className="sb-urole">
+              {profile?.role
+                ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1)
+                : 'allwaytaxi.com'}
+            </div>
           </div>
         </div>
       </div>
@@ -526,7 +561,7 @@ export default function App() {
         </div>
 
         <div className="content">
-          <div key={page} className="anim-fade">
+          <div key={`${page}-${refreshKey}`} className="anim-fade">
             <PageComponent onNavigate={setPage} />
           </div>
         </div>

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { toast } from 'sonner'
 
 const COL1 = '1fr 80px 80px 90px 80px'
-const PCOL = '100px 1fr 60px 70px'
+const PCOL = '100px 1fr 60px 70px 80px'
 
 function CampaignIcon({ type, status }) {
   const icons = {
@@ -36,14 +37,16 @@ export default function Marketing() {
   const [promos, setPromos]       = useState([])
   const [loading, setLoading]     = useState(true)
   const [promoFilter, setPromoFilter] = useState('All')
+  const [promoSearch, setPromoSearch] = useState('')
   const [expandedCamp, setExpanded]   = useState(null)
+  const [toggling, setToggling]   = useState(null)
   const [metrics, setMetrics]     = useState({ active: 0, sent: 0, activeCodes: 0 })
 
   useEffect(() => {
     async function load() {
       const [campsRes, promosRes] = await Promise.all([
         supabase.from('campaigns').select('id, name, type, status, sent_count, created_at').order('created_at', { ascending: false }),
-        supabase.from('promo_codes').select('id, code, discount_pct, max_uses, uses_count, expires_at, active').order('uses_count', { ascending: false }),
+        supabase.from('promo_codes').select('id, code, discount_value, discount_type, max_uses, use_count, expires_at, status').order('use_count', { ascending: false }),
       ])
       if (campsRes.data)  setCampaigns(campsRes.data)
       if (promosRes.data) setPromos(promosRes.data)
@@ -54,26 +57,46 @@ export default function Marketing() {
       setMetrics({
         active:      camps.filter(c => c.status === 'active').length,
         sent:        camps.reduce((s, c) => s + (c.sent_count || 0), 0),
-        activeCodes: promos.filter(p => p.active).length,
+        activeCodes: promos.filter(p => p.status === 'active').length,
       })
       setLoading(false)
     }
     load()
   }, [])
 
-  const filteredPromos = promoFilter === 'All'
-    ? promos
-    : promos.filter(p => {
-        if (promoFilter === 'Active')  return p.active && new Date(p.expires_at) > new Date()
-        if (promoFilter === 'Expired') return !p.active || new Date(p.expires_at) < new Date()
-        return true
-      })
+  const filteredPromos = promos.filter(p => {
+    const matchSearch = !promoSearch || p.code.toLowerCase().includes(promoSearch.toLowerCase())
+    const isExpired   = p.expires_at && new Date(p.expires_at) < new Date()
+    const matchFilter =
+      promoFilter === 'All'     ? true :
+      promoFilter === 'Active'  ? (p.status === 'active' && !isExpired) :
+      promoFilter === 'Paused'  ? (p.status === 'paused' && !isExpired) :
+      promoFilter === 'Expired' ? isExpired : true
+    return matchSearch && matchFilter
+  })
 
   function campSub(c) {
     const channel = c.type === 'whatsapp' ? 'WhatsApp' : 'SMS'
     const sent    = c.sent_count > 0 ? `${c.sent_count.toLocaleString()} sent` : 'Not started'
     const ends    = c.status === 'active' ? '· Ongoing' : c.status === 'scheduled' ? '· Scheduled' : '· Ended'
     return `${channel} · ${sent} ${ends}`
+  }
+
+  async function togglePromo(id, currentStatus) {
+    setToggling(id)
+    const nextStatus = currentStatus === 'active' ? 'paused' : 'active'
+    const { error } = await supabase
+      .from('promo_codes')
+      .update({ status: nextStatus })
+      .eq('id', id)
+    if (!error) {
+      setPromos(prev => prev.map(p => p.id === id ? { ...p, status: nextStatus } : p))
+      setMetrics(prev => ({ ...prev, activeCodes: prev.activeCodes + (nextStatus === 'active' ? 1 : -1) }))
+      toast.success(nextStatus === 'paused' ? 'Promo code paused' : 'Promo code activated')
+    } else {
+      toast.error(error.message)
+    }
+    setToggling(null)
   }
 
   if (loading) {
@@ -112,7 +135,10 @@ export default function Marketing() {
             <span className="card-title">Campaigns</span>
           </div>
           {campaigns.length === 0 ? (
-            <div style={{ padding: '20px', textAlign: 'center', fontSize: 13, color: 'var(--text-ter)' }}>No campaigns yet</div>
+            <div style={{ padding: '32px 20px', textAlign: 'center', fontSize: 13, color: 'var(--text-ter)' }}>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>📣</div>
+              No campaigns yet. Campaigns are created through your WhatsApp Business integration.
+            </div>
           ) : campaigns.map(c => (
             <div key={c.id}>
               <div
@@ -154,31 +180,71 @@ export default function Marketing() {
         <div className="card">
           <div className="card-head">
             <span className="card-title">Promo codes</span>
-            <select
-              value={promoFilter}
-              onChange={e => setPromoFilter(e.target.value)}
-              style={{ fontSize: 11, padding: '3px 8px', background: 'var(--dark4)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-sec)', fontFamily: 'var(--font)', outline: 'none' }}
-            >
-              <option>All</option>
-              <option>Active</option>
-              <option>Expired</option>
-            </select>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                placeholder="Search code…"
+                value={promoSearch}
+                onChange={e => setPromoSearch(e.target.value)}
+                style={{ padding: '3px 8px', fontSize: 11, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-pri)', fontFamily: 'var(--font)', outline: 'none', width: 100 }}
+              />
+              <select
+                value={promoFilter}
+                onChange={e => setPromoFilter(e.target.value)}
+                style={{ fontSize: 11, padding: '3px 8px', background: 'var(--dark4)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-sec)', fontFamily: 'var(--font)', outline: 'none' }}
+              >
+                <option>All</option>
+                <option>Active</option>
+                <option>Paused</option>
+                <option>Expired</option>
+              </select>
+            </div>
           </div>
           <div className="table-head" style={{ gridTemplateColumns: PCOL, fontSize: 9 }}>
-            Code<span>Discount</span><span>Uses</span><span>Status</span>
+            Code<span>Discount</span><span>Uses</span><span>Status</span><span>Action</span>
           </div>
-          {filteredPromos.length === 0 ? (
-            <div style={{ padding: '16px', textAlign: 'center', fontSize: 12, color: 'var(--text-ter)' }}>No codes match filter.</div>
+          {promos.length === 0 ? (
+            <div style={{ padding: '32px 20px', textAlign: 'center', fontSize: 13, color: 'var(--text-ter)' }}>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>🏷️</div>
+              No promo codes yet — click <strong style={{ color: 'var(--yellow)' }}>+ New campaign</strong> to create one.
+            </div>
+          ) : filteredPromos.length === 0 ? (
+            <div style={{ padding: '16px', textAlign: 'center', fontSize: 12, color: 'var(--text-ter)' }}>
+              No codes match your filter.
+              <span style={{ display: 'block', marginTop: 4, fontSize: 11, color: 'var(--yellow)', cursor: 'pointer' }} onClick={() => { setPromoSearch(''); setPromoFilter('All') }}>Clear</span>
+            </div>
           ) : filteredPromos.map(p => {
-            const expired = !p.active || new Date(p.expires_at) < new Date()
-            const badge   = expired ? 'b-gray' : p.uses_count >= p.max_uses * 0.9 ? 'b-amber' : 'b-green'
-            const label   = expired ? 'Expired' : p.uses_count >= p.max_uses * 0.9 ? 'Almost full' : 'Active'
+            const isExpired = p.expires_at && new Date(p.expires_at) < new Date()
+            const paused    = p.status === 'paused' || isExpired
+            const badge     = paused ? 'b-gray' : p.use_count >= p.max_uses * 0.9 ? 'b-amber' : 'b-green'
+            const label     = p.status === 'paused' ? 'Paused' : isExpired ? 'Expired' : p.use_count >= p.max_uses * 0.9 ? 'Almost full' : 'Active'
             return (
               <div key={p.id} className="table-row" style={{ gridTemplateColumns: PCOL }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: expired ? 'var(--text-ter)' : 'var(--yellow)', fontFamily: 'monospace' }}>{p.code}</span>
-                <span style={{ fontSize: 12, color: 'var(--text-sec)' }}>{p.discount_pct}% off</span>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>{p.uses_count}</span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: paused ? 'var(--text-ter)' : 'var(--yellow)', fontFamily: 'monospace' }}>{p.code}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-sec)' }}>{p.discount_type === 'percent' ? `${p.discount_value}%` : `$${p.discount_value}`} off</span>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{p.use_count ?? 0}</span>
                 <span className={`badge ${badge}`}>{label}</span>
+                {isExpired ? (
+                  <span style={{ fontSize: 10, color: 'var(--text-ter)' }}>Expired</span>
+                ) : (
+                  <button
+                    disabled={toggling === p.id}
+                    onClick={() => togglePromo(p.id, p.status)}
+                    style={{
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      border: p.status === 'active' ? '1px solid rgba(245,184,0,.3)' : '1px solid rgba(93,202,165,.3)',
+                      background: p.status === 'active' ? 'rgba(245,184,0,.07)' : 'rgba(93,202,165,.07)',
+                      color: p.status === 'active' ? '#F5B800' : '#5DCAA5',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: toggling === p.id ? 'not-allowed' : 'pointer',
+                      opacity: toggling === p.id ? 0.5 : 1,
+                      fontFamily: 'var(--font)',
+                    }}
+                  >
+                    {toggling === p.id ? '…' : p.status === 'active' ? 'Pause' : 'Activate'}
+                  </button>
+                )}
               </div>
             )
           })}
@@ -194,6 +260,9 @@ export default function Marketing() {
         <div className="table-head" style={{ gridTemplateColumns: COL1 }}>
           Campaign<span>Channel</span><span>Status</span><span>Sent</span><span>Uses</span>
         </div>
+        {campaigns.length === 0 && (
+          <div style={{ padding: '20px', textAlign: 'center', fontSize: 12, color: 'var(--text-ter)' }}>No campaign data yet</div>
+        )}
         {campaigns.map(c => {
           const relatedPromo = promos.find(p => c.name.toLowerCase().includes(p.code.toLowerCase().slice(0, 4)))
           return (
@@ -202,7 +271,7 @@ export default function Marketing() {
               <span className="b-blue badge" style={{ width: 'fit-content', textTransform: 'capitalize' }}>{c.type}</span>
               <span className={`badge ${statusBadge(c.status)}`} style={{ textTransform: 'capitalize' }}>{c.status}</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: c.sent_count ? undefined : 'var(--text-ter)' }}>{c.sent_count?.toLocaleString() || '—'}</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#5DCAA5' }}>{relatedPromo ? relatedPromo.uses_count : '—'}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#5DCAA5' }}>{relatedPromo ? relatedPromo.use_count : '—'}</span>
             </div>
           )
         })}
